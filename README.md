@@ -1,39 +1,89 @@
 # Pocket Mac
 
-Pocket Mac is a personal remote-control prototype for using the Codex app on a Mac from a phone browser.
+Pocket Mac lets you open Codex on your Mac and control it from your phone in a few clicks.
 
-The current milestone focuses on the smallest end-to-end loop that is actually useful:
+The goal is simple: keep Codex running locally on your Mac, stream that experience to your phone, and let your phone act like a lightweight remote control for prompts, focus, and stop actions.
 
-- live stream the Mac screen or Codex window to a phone browser
-- use a stream-first phone console with native control buttons
-- have a local Mac agent focus the Codex app and paste the prompt
-- optionally submit the prompt automatically
+What it does well today:
+
+- stream your Mac screen to a phone browser
+- open one clean QR code flow from the Mac
+- let your phone focus Codex and send prompts
+- auto-start the local Mac agent for the active session
+- create a remote phone link with bundled tunnel tools, with same-Wi-Fi fallback if needed
+
+Why it feels simple:
+
+- one Mac app bundle
+- no separate Python install
+- no separate Node install
+- bundled remote tunnel tooling
+- phone uses a browser, not a native app
+
+## Quick Start
+
+### Fastest Way To Try It
+
+1. Download `PocketMac.dmg` from GitHub Releases.
+2. Open the DMG and drag `PocketMac.app` into `Applications`.
+3. Open `PocketMac.app`.
+4. On the Mac page, click `Stream Your Mac Controls to Your Phone`.
+5. Allow screen sharing when Safari/macOS asks.
+6. Scan the QR code from your phone.
+
+That is the main product flow.
+
+What the app handles for you:
+
+- starts the local web app
+- creates the session behind the scenes
+- starts the local Mac agent
+- tries a bundled remote tunnel first
+- falls back to a same-Wi-Fi link if remote providers are unavailable
+
+### What To Expect On First Run
+
+- macOS may warn because the app is not yet signed/notarized
+- you may need to right-click `Open` the first time
+- macOS will ask for Screen Recording permission
+- macOS will ask for Accessibility permission if you want Codex prompt control
+
+### For Testers
+
+You do not need to install:
+
+- Python
+- Node
+- `cloudflared`
+- `localtunnel`
+
+Those are already bundled into the app.
+
+You do need:
+
+- a Mac with the Codex app installed
+- internet access for remote mode
+- or the same Wi-Fi network for LAN fallback mode
 
 ## Status
 
-Implemented and smoke-tested locally:
+Implemented and tested:
 
-- FastAPI service with session management
-- token-protected host, viewer, and agent access per session
-- session ids are write-once so a guessed id cannot be reclaimed for a token
-- WebSocket signaling for WebRTC offer/answer exchange
-- launch page that owns the host flow directly
-- QR-ready viewer links generated from the active session
-- browser host flow for Mac screen sharing
-- mobile viewer page for watching the stream, taking control, and sending native actions
-- single-controller lease so only one connected viewer can issue commands at a time
-- presence and recent-command status in the phone UI
-- Mac agent that polls for commands and can inject prompts, focus Codex, and send Escape via AppleScript
-- temporary public-tunnel remote trial flow with automatic fallback
-- API smoke test for session, command queue, and WebSocket relay flows
-- macOS desktop launcher that bundles the local web app into a self-contained `.app`
+- self-contained macOS app bundle and DMG
+- one-click Mac host flow
+- token-protected session links
+- phone viewer with native controls
+- local Mac agent for Codex focus, prompt paste, and stop
+- remote public tunnel flow with bundled provider fallback
+- same-network LAN fallback
+- smoke tests for session, commands, QR, and WebSocket relay
 
 Not done yet:
 
-- signed/notarized macOS distribution
-- TURN/STUN hardening for internet-grade connectivity beyond trial tunnels
+- Apple signing and notarization
+- production-grade TURN/STUN setup
 - full remote mouse and keyboard control
-- persistent auth and multi-device account management
+- user accounts and persistent multi-device auth
 
 ## Architecture
 
@@ -135,9 +185,9 @@ If those variables are set, the build script will:
 - submit the DMG to Apple notarization
 - staple the notarization ticket to both the app and DMG
 
-## Quick Start
+## Development Setup
 
-### 1. Install and run the server
+### 1. Run From Source
 
 ```bash
 cd shared-backend
@@ -174,7 +224,7 @@ The current implementation tries tunnel providers in this order:
 - bundled `localtunnel`
 - same-Wi-Fi LAN fallback when both remote providers are unavailable
 
-### 2. Start the Mac agent
+### 2. Start the Mac agent manually
 
 ```bash
 cd shared-backend

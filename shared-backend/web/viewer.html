@@ -22,21 +22,21 @@
           <button id="controlToggle" class="secondary">Take Control</button>
         </div>
 
+        <div class="row viewer-status-row">
+          <div id="status" class="status-card compact-status">Idle</div>
+          <div id="presence" class="status-card compact-status">No session data yet.</div>
+        </div>
+
         <div class="viewer-stage">
           <div class="video-frame">
             <video id="remote" autoplay playsinline></video>
           </div>
-          <div class="viewer-overlay">
-            <div class="viewer-topbar">
-              <span id="status" class="glass-chip">Idle</span>
-              <span id="presence" class="glass-chip">No session data yet.</span>
-            </div>
-            <div class="viewer-quickbar">
-              <button id="focusCodex" class="secondary floating-action">Focus</button>
-              <button id="openComposer" class="secondary floating-action">Composer</button>
-              <button id="stopCodex" class="secondary floating-action">Stop</button>
-            </div>
-          </div>
+        </div>
+
+        <div class="row viewer-action-row">
+          <button id="focusCodex" class="secondary action-button">Focus</button>
+          <button id="openComposer" class="secondary action-button">Open Composer</button>
+          <button id="stopCodex" class="secondary action-button">Stop</button>
         </div>
 
         <div class="status-grid">
@@ -51,7 +51,7 @@
         </div>
       </section>
 
-      <section id="composerCard" class="card composer-card">
+      <section id="composerCard" class="card composer-card hidden">
         <div class="row composer-toolbar">
           <div>
             <h2 style="margin: 0 0 6px 0">Composer</h2>
@@ -60,6 +60,7 @@
               the source of truth.
             </p>
           </div>
+          <button id="closeComposer" class="secondary">Close</button>
         </div>
 
         <div class="stack" style="margin-top: 16px">
@@ -85,6 +86,7 @@
       const focusCodexButton = document.getElementById("focusCodex");
       const openComposerButton = document.getElementById("openComposer");
       const stopCodexButton = document.getElementById("stopCodex");
+      const closeComposerButton = document.getElementById("closeComposer");
       const sendButton = document.getElementById("send");
       const pasteOnlyButton = document.getElementById("sendNoSubmit");
       const focusComposerButton = document.getElementById("focusComposerButton");
@@ -338,8 +340,15 @@
       }
 
       function openComposer() {
+        composerCard.classList.remove("hidden");
         composerCard.scrollIntoView({ behavior: "smooth", block: "start" });
         promptField.focus();
+        openComposerButton.textContent = "Composer Open";
+      }
+
+      function closeComposer() {
+        composerCard.classList.add("hidden");
+        openComposerButton.textContent = "Open Composer";
       }
 
       connectButton.addEventListener("click", connectSocket);
@@ -351,6 +360,7 @@
       focusComposerButton.addEventListener("click", () => sendCommand("focus_codex"));
       stopComposerButton.addEventListener("click", () => sendCommand("interrupt_codex"));
       openComposerButton.addEventListener("click", openComposer);
+      closeComposerButton.addEventListener("click", closeComposer);
 
       updateControlUi();
     </script>

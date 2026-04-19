@@ -151,7 +151,6 @@ video {
 }
 
 .viewer-stage {
-  position: relative;
   margin-top: 16px;
 }
 
@@ -162,33 +161,6 @@ video {
 .viewer-stage video {
   min-height: 300px;
   object-fit: contain;
-}
-
-.viewer-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.viewer-topbar,
-.viewer-quickbar {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  pointer-events: auto;
-}
-
-.viewer-topbar {
-  top: 16px;
-  align-items: flex-start;
-}
-
-.viewer-quickbar {
-  bottom: 16px;
-  justify-content: center;
 }
 
 .glass-chip {
@@ -204,6 +176,26 @@ video {
 .stack {
   display: grid;
   gap: 12px;
+}
+
+.hidden {
+  display: none;
+}
+
+.viewer-status-row,
+.viewer-action-row {
+  margin-top: 14px;
+}
+
+.compact-status {
+  flex: 1 1 220px;
+  min-height: 0;
+  white-space: normal;
+}
+
+.action-button {
+  min-width: 120px;
+  justify-content: center;
 }
 
 .status-grid {
@@ -235,11 +227,6 @@ video {
   gap: 12px;
 }
 
-.floating-action {
-  min-width: 108px;
-  justify-content: center;
-}
-
 .viewer-muted {
   color: #8ea9bf;
 }
@@ -259,14 +246,9 @@ video {
     min-height: 220px;
   }
 
-  .viewer-topbar,
-  .viewer-quickbar {
-    left: 10px;
-    right: 10px;
-  }
-
-  .floating-action {
-    min-width: 92px;
+  .compact-status,
+  .action-button {
+    min-width: 0;
     flex: 1 1 120px;
   }
 }

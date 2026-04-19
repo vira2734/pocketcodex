@@ -38,6 +38,8 @@ def resolve_base_dir() -> Path:
 BASE_DIR = resolve_base_dir()
 DB_PATH = Path(os.getenv("POCKETCODEX_DB_PATH", str(BASE_DIR / "control.db"))).expanduser()
 WEB_DIR = Path(os.getenv("POCKETCODEX_WEB_DIR", str(BASE_DIR / "web"))).expanduser()
+AGENT_LOG_DIR = DB_PATH.parent / "logs"
+CLAIM_STALE_AFTER_SECONDS = 30
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 DEFAULT_ICE_SERVERS = [{"urls": "stun:stun.l.google.com:19302"}]
 CONTROL_LEASE_SECONDS = int(os.getenv("CONTROL_LEASE_SECONDS", "45"))
@@ -342,16 +344,28 @@ class LocalAgentManager:
                     "--app-name",
                     app_name,
                 ]
+            AGENT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+            log_path = AGENT_LOG_DIR / f"agent-{session_id}.log"
+            log_handle = open(log_path, "a", encoding="utf-8")
+            log_handle.write(
+                f"\n=== starting agent session={session_id} pid-parent={os.getpid()} at {datetime.now(timezone.utc).isoformat()} ===\n"
+            )
+            log_handle.flush()
+            agent_env = os.environ.copy()
+            agent_env["PYTHONUNBUFFERED"] = "1"
+
             process = subprocess.Popen(
                 command,
                 cwd=BASE_DIR,
-                env=os.environ.copy(),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                env=agent_env,
+                stdout=log_handle,
+                stderr=log_handle,
                 stdin=subprocess.DEVNULL,
                 text=True,
+                bufsize=1,
                 start_new_session=True,
             )
+            log_handle.close()
             self._processes[session_id] = process
             return {"running": True, "started": True, "pid": process.pid}
 
@@ -949,11 +963,15 @@ def claim_next_command(
             """
             SELECT *
             FROM commands
-            WHERE session_id = ? AND status = 'queued'
+            WHERE session_id = ?
+              AND (
+                status = 'queued'
+                OR (status = 'claimed' AND updated_at <= datetime('now', ?))
+              )
             ORDER BY id ASC
             LIMIT 1
             """,
-            (session_id,),
+            (session_id, f"-{CLAIM_STALE_AFTER_SECONDS} seconds"),
         ).fetchone()
 
         if row is None:

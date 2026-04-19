@@ -54,10 +54,12 @@ Why it feels simple:
 
 1. Download `PocketMac.dmg` from GitHub Releases.
 2. Open the DMG and drag `PocketMac.app` into `Applications`.
-3. Open `PocketMac.app`.
-4. On the Mac page, click `Stream Your Mac Controls to Your Phone`.
-5. Allow screen sharing when Safari/macOS asks.
-6. Scan the QR code from your phone.
+3. Open the `Codex` app on your Mac and leave it running.
+4. Open `PocketMac.app`.
+5. On the Mac page, click `Stream Your Mac Controls to Your Phone`.
+6. Allow Screen & System Audio Recording when Safari/macOS asks.
+7. Allow Accessibility when macOS asks so Pocket Mac can focus Codex and send prompts.
+8. Scan the QR code from your phone.
 
 That is the main product flow.
 
@@ -73,8 +75,9 @@ What the app handles for you:
 
 - macOS may warn because the app is not yet signed/notarized
 - you may need to right-click `Open` the first time
-- macOS will ask for Screen Recording permission
+- macOS will ask for Screen & System Audio Recording permission
 - macOS will ask for Accessibility permission if you want Codex prompt control
+- Codex should already be open before you start Pocket Mac
 
 ### For Testers
 
@@ -376,9 +379,13 @@ This validates:
 
 ## macOS Permissions
 
-The streaming host page needs browser permission to share the screen or window.
+Pocket Mac needs Screen & System Audio Recording permission so the browser host flow can capture the
+Mac display and the bundled vision-based Codex targeting can inspect the live window contents.
 
 The Mac agent needs macOS Accessibility permission to send keystrokes to the Codex app.
+
+For the smoothest setup, open the `Codex` app before launching `PocketMac.app` so the local agent
+can immediately activate and target the existing Codex window.
 
 At the current prototype stage, the browser-level flow works until Safari reaches the native
 screen/window selection step. That chooser is expected to require human interaction during real

@@ -1,2 +1,7 @@
 -r requirements.txt
 pyinstaller
+numpy
+opencv-python-headless
+pyobjc-framework-ApplicationServices
+pyobjc-framework-Cocoa
+pyobjc-framework-Quartz

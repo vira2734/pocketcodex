@@ -167,6 +167,22 @@ pyinstaller \
   --hidden-import _sqlite3 \
   --hidden-import qrcode \
   --hidden-import qrcode.image.svg \
+  --hidden-import AppKit \
+  --hidden-import Quartz \
+  --hidden-import ApplicationServices \
+  --hidden-import Cocoa \
+  --hidden-import Foundation \
+  --hidden-import objc \
+  --hidden-import cv2 \
+  --hidden-import numpy \
+  --collect-all AppKit \
+  --collect-all Quartz \
+  --collect-all ApplicationServices \
+  --collect-all Cocoa \
+  --collect-all Foundation \
+  --collect-all objc \
+  --collect-all cv2 \
+  --collect-all numpy \
   --add-data "${ROOT_DIR}/shared-backend/app:app" \
   --add-data "${ROOT_DIR}/shared-backend/web:web" \
   --add-data "${BUNDLED_TOOLS_DIR}:bundled-tools" \

@@ -10,6 +10,8 @@ DMG_PATH="${DIST_DIR}/${APP_NAME}.dmg"
 BUILD_TMP_DIR="${ROOT_DIR}/.packaging-tmp"
 BUNDLED_TOOLS_DIR="${BUILD_TMP_DIR}/bundled-tools"
 ARCH="$(uname -m)"
+CODESIGN_IDENTITY="${POCKETMAC_CODESIGN_IDENTITY:-}"
+KEYCHAIN_PROFILE="${POCKETMAC_NOTARY_KEYCHAIN_PROFILE:-}"
 
 mkdir -p "${BUILD_TMP_DIR}"
 
@@ -101,6 +103,59 @@ PY
 download_cloudflared
 download_node_and_localtunnel
 
+codesign_path() {
+  local target="$1"
+  codesign \
+    --force \
+    --sign "${CODESIGN_IDENTITY}" \
+    --options runtime \
+    --timestamp \
+    "$target"
+}
+
+sign_app_bundle_if_requested() {
+  if [[ -z "${CODESIGN_IDENTITY}" ]]; then
+    return
+  fi
+
+  echo "Signing app bundle with identity: ${CODESIGN_IDENTITY}"
+  while IFS= read -r -d '' entry; do
+    codesign_path "${entry}"
+  done < <(
+    find "${APP_BUNDLE}" \
+      \( -type f \( -perm -111 -o -name '*.dylib' -o -name '*.so' \) \) \
+      -print0 | sort -z
+  )
+
+  codesign_path "${APP_BUNDLE}"
+}
+
+sign_dmg_if_requested() {
+  if [[ -z "${CODESIGN_IDENTITY}" ]]; then
+    return
+  fi
+
+  echo "Signing DMG with identity: ${CODESIGN_IDENTITY}"
+  codesign_path "${DMG_PATH}"
+}
+
+notarize_if_requested() {
+  if [[ -z "${KEYCHAIN_PROFILE}" ]]; then
+    return
+  fi
+
+  if [[ -z "${CODESIGN_IDENTITY}" ]]; then
+    echo "POCKETMAC_NOTARY_KEYCHAIN_PROFILE was provided without POCKETMAC_CODESIGN_IDENTITY." >&2
+    exit 1
+  fi
+
+  echo "Submitting DMG for notarization with keychain profile: ${KEYCHAIN_PROFILE}"
+  xcrun notarytool submit "${DMG_PATH}" --keychain-profile "${KEYCHAIN_PROFILE}" --wait
+  echo "Stapling notarization tickets"
+  xcrun stapler staple "${APP_BUNDLE}"
+  xcrun stapler staple "${DMG_PATH}"
+}
+
 pyinstaller \
   --noconfirm \
   --clean \
@@ -119,6 +174,7 @@ pyinstaller \
 
 TMP_DMG_DIR="$(mktemp -d "${ROOT_DIR}/.dmg-staging.XXXXXX")"
 trap 'rm -rf "${TMP_DMG_DIR}" "${BUNDLED_TOOLS_DIR}" "${BUILD_TMP_DIR}/cloudflared.tgz" "${BUILD_TMP_DIR}"/node-*.tar.gz "${BUILD_TMP_DIR}"/node-v*-darwin-*' EXIT
+sign_app_bundle_if_requested
 cp -R "${APP_BUNDLE}" "${TMP_DMG_DIR}/"
 ln -s /Applications "${TMP_DMG_DIR}/Applications"
 hdiutil create \
@@ -127,6 +183,8 @@ hdiutil create \
   -ov \
   -format UDZO \
   "${DMG_PATH}" >/dev/null
+sign_dmg_if_requested
+notarize_if_requested
 
 echo
 echo "Built app bundle:"

@@ -117,7 +117,23 @@ The build script was verified locally by:
 
 Current limitation:
 
-- the app bundle is built and runnable locally, but it is not yet code signed or notarized for public distribution
+- the build supports signing and notarization, but you still need an Apple Developer signing certificate and a notarytool keychain profile on the build Mac
+
+Optional signing and notarization:
+
+```bash
+export POCKETMAC_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export POCKETMAC_NOTARY_KEYCHAIN_PROFILE="pocketmac-notary"
+./packaging/build_macos_app.sh
+```
+
+If those variables are set, the build script will:
+
+- sign the bundled executable payloads
+- sign `PocketMac.app`
+- sign `PocketMac.dmg`
+- submit the DMG to Apple notarization
+- staple the notarization ticket to both the app and DMG
 
 ## Quick Start
 

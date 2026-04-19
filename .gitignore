@@ -10,6 +10,6 @@ __pycache__/
 *.log
 dist/
 build/
-PocketCodex.spec
+PocketMac.spec
 tmp/
 .pytest_cache/

@@ -87,7 +87,7 @@ class ControlRelease(BaseModel):
     viewer_id: str = Field(..., min_length=8, max_length=128)
 
 
-app = FastAPI(title="PocketCodex", version="0.2.0")
+app = FastAPI(title="Pocket Mac", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

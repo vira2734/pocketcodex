@@ -1,6 +1,6 @@
-# PocketCodex
+# Pocket Mac
 
-PocketCodex is a personal remote-control prototype for using the Codex app on a Mac from a phone browser.
+Pocket Mac is a personal remote-control prototype for using the Codex app on a Mac from a phone browser.
 
 The current milestone focuses on the smallest end-to-end loop that is actually useful:
 
@@ -78,17 +78,17 @@ The prototype is split into three pieces:
 - `shared-backend/web/index.html`: one-click Mac host flow
 - `shared-backend/scripts/smoke_test.py`: local API smoke test
 - `shared-backend/scripts/fake_tunnel.py`: deterministic test helper for the remote trial flow
-- `packaging/build_macos_app.sh`: builds `dist/PocketCodex.app` with PyInstaller
+- `packaging/build_macos_app.sh`: builds `dist/PocketMac.app` with PyInstaller
 
 ## macOS App Packaging
 
-PocketCodex can now be built as a self-contained macOS app bundle so end users do not need their
+Pocket Mac can now be built as a self-contained macOS app bundle so end users do not need their
 own Python installation.
 
 What the packaged app does:
 
-- bundles the Python runtime and PocketCodex backend
-- stores writable app data under `~/Library/Application Support/PocketCodex`
+- bundles the Python runtime and Pocket Mac backend
+- stores writable app data under `~/Library/Application Support/PocketMac`
 - launches the local server itself
 - opens the local host UI in the browser
 - can relaunch the local Mac agent from the same bundled runtime
@@ -102,12 +102,12 @@ Build the `.app` locally:
 That produces:
 
 ```bash
-dist/PocketCodex.app
+dist/PocketMac.app
 ```
 
 The build script was verified locally by:
 
-- building `dist/PocketCodex.app`
+- building `dist/PocketMac.app`
 - launching the bundled executable directly
 - hitting `/api/health` successfully from the built app runtime
 
@@ -136,12 +136,12 @@ export ICE_SERVERS_JSON='[{"urls":"stun:stun.l.google.com:19302"},{"urls":["turn
 
 Recommended secure deployment shape:
 
-- put PocketCodex behind HTTPS at `PUBLIC_BASE_URL`
+- put Pocket Mac behind HTTPS at `PUBLIC_BASE_URL`
 - keep the generated tokenized links private
 - configure your own TURN server in `ICE_SERVERS_JSON`
 - prefer a dedicated small VPS or Cloudflare/Tailscale-style entry point over exposing a raw home IP
 
-For quick public testing without running your own infra, PocketCodex now has a temporary remote trial mode:
+For quick public testing without running your own infra, Pocket Mac now has a temporary remote trial mode:
 
 - it starts a public tunnel to the local FastAPI service
 - it keeps the Mac host page on `localhost`
@@ -171,7 +171,7 @@ python3 mac_agent.py --session demo123 --token YOUR_SESSION_TOKEN --dry-run
 The streamlined launch/host flow can now start the local Mac agent automatically for the active session.
 The manual command above is still useful as a fallback and for debugging.
 
-### 3. Open PocketCodex on the Mac
+### 3. Open Pocket Mac on the Mac
 
 Open:
 
@@ -217,7 +217,7 @@ The one-click Mac flow now starts the remote phone path automatically during pre
 
 That does three things:
 
-- starts a temporary public tunnel to the local PocketCodex server when available
+- starts a temporary public tunnel to the local Pocket Mac server when available
 - updates the phone viewer link and QR code to the public tunnel URL
 - falls back to a same-Wi-Fi link when public tunnel providers are unavailable
 

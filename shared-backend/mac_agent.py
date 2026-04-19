@@ -254,7 +254,7 @@ def run_loop(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="PocketCodex Mac agent")
+    parser = argparse.ArgumentParser(description="Pocket Mac agent")
     parser.add_argument("--session", required=True, help="Session id to watch")
     parser.add_argument("--token", required=True, help="Session access token")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000", help="FastAPI base URL")

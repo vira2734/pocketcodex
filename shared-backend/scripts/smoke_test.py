@@ -204,14 +204,14 @@ def main() -> None:
             payload={},
         )
         assert remote_trial["active"] is True
-        assert remote_trial["public_url"] == "https://pocketcodex-demo.trycloudflare.com"
+        assert remote_trial["public_url"] == "https://pocketmac-demo.trycloudflare.com"
 
         runtime_with_trial = fetch_json("http://127.0.0.1:8011/api/runtime-config")
-        assert runtime_with_trial["public_base_url"] == "https://pocketcodex-demo.trycloudflare.com"
+        assert runtime_with_trial["public_base_url"] == "https://pocketmac-demo.trycloudflare.com"
         assert runtime_with_trial["remote_trial"]["active"] is True
 
         session_with_trial = fetch_json(f"http://127.0.0.1:8011/api/sessions/{session_id}", headers=auth)
-        assert session_with_trial["links"]["viewer_url"].startswith("https://pocketcodex-demo.trycloudflare.com")
+        assert session_with_trial["links"]["viewer_url"].startswith("https://pocketmac-demo.trycloudflare.com")
         assert session_with_trial["links"]["viewer_lan_url"].startswith("http://")
 
         stopped_trial = fetch_json(

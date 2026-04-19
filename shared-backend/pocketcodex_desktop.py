@@ -26,7 +26,7 @@ def resource_base_dir() -> Path:
 
 
 def app_support_dir() -> Path:
-    return Path.home() / "Library" / "Application Support" / "PocketCodex"
+    return Path.home() / "Library" / "Application Support" / "PocketMac"
 
 
 def find_open_port() -> int:
@@ -44,7 +44,7 @@ def wait_for_server(url: str, timeout_seconds: float = 20.0) -> None:
                     return
         except URLError:
             time.sleep(0.25)
-    raise RuntimeError(f"PocketCodex did not become healthy at {url} in time.")
+    raise RuntimeError(f"Pocket Mac did not become healthy at {url} in time.")
 
 
 def build_runtime_env(base_dir: Path, data_dir: Path, runtime_executable: str, runtime_script: str | None) -> None:
@@ -108,7 +108,7 @@ def run_desktop(open_browser: bool, port: int | None) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="PocketCodex desktop launcher")
+    parser = argparse.ArgumentParser(description="Pocket Mac desktop launcher")
     parser.add_argument("--agent-mode", action="store_true", help="Run the local Mac agent worker")
     parser.add_argument("--session", help="Session id to watch")
     parser.add_argument("--token", help="Session access token")

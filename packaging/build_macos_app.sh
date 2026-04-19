@@ -10,14 +10,14 @@ source "${BUILD_VENV}/bin/activate"
 python -m pip install --upgrade pip
 python -m pip install -r "${ROOT_DIR}/shared-backend/requirements-build.txt"
 
-rm -rf "${ROOT_DIR}/build" "${DIST_DIR}/PocketCodex" "${DIST_DIR}/PocketCodex.app"
+rm -rf "${ROOT_DIR}/build" "${DIST_DIR}/PocketMac" "${DIST_DIR}/PocketMac.app"
 
 pyinstaller \
   --noconfirm \
   --clean \
   --windowed \
-  --name PocketCodex \
-  --osx-bundle-identifier com.vira2734.pocketcodex \
+  --name PocketMac \
+  --osx-bundle-identifier com.vira2734.pocketmac \
   --hidden-import app.main \
   --hidden-import sqlite3 \
   --hidden-import _sqlite3 \
@@ -29,4 +29,4 @@ pyinstaller \
 
 echo
 echo "Built app bundle:"
-echo "  ${DIST_DIR}/PocketCodex.app"
+echo "  ${DIST_DIR}/PocketMac.app"

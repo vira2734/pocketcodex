@@ -1,1 +1,1 @@
-"""PocketCodex FastAPI package."""
+"""Pocket Mac FastAPI package."""

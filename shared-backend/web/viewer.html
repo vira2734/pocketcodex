@@ -12,7 +12,7 @@
         <input id="session" class="mono hidden" />
 
         <div class="viewer-hero">
-          <button id="connect" class="hero-button">Connect to My PC</button>
+          <button id="connect" class="hero-button">Connect to My Mac</button>
         </div>
 
         <div class="viewer-stage">
@@ -22,8 +22,7 @@
         </div>
 
         <div class="row viewer-action-row">
-          <button id="focusCodex" class="secondary action-button">Focus</button>
-          <button id="stopCodex" class="secondary action-button">Stop</button>
+          <button id="focusCodex" class="secondary action-button">Focus Codex</button>
         </div>
       </section>
 
@@ -39,6 +38,7 @@
           ></textarea>
           <div class="composer-actions">
             <button id="send" class="execute-button">Execute</button>
+            <button id="stopComposer" class="secondary execute-button">Stop</button>
           </div>
           <div id="log" class="log status">No actions sent yet.</div>
         </div>
@@ -69,7 +69,7 @@
       const sessionInput = document.getElementById("session");
       const connectButton = document.getElementById("connect");
       const focusCodexButton = document.getElementById("focusCodex");
-      const stopCodexButton = document.getElementById("stopCodex");
+      const stopComposerButton = document.getElementById("stopComposer");
       const monitorToggleButton = document.getElementById("monitorToggle");
       const sendButton = document.getElementById("send");
       const remoteVideo = document.getElementById("remote");
@@ -132,8 +132,8 @@
           ? `${controllerLabel} is controlling this session. Lease: ${controllerState.lease_seconds}s`
           : "No active controller.";
         focusCodexButton.disabled = !hasControl;
-        stopCodexButton.disabled = !hasControl;
         sendButton.disabled = !hasControl;
+        stopComposerButton.disabled = !hasControl;
       }
 
       async function acquireControlIfAvailable() {
@@ -315,6 +315,18 @@
         refreshSessionState();
       }
 
+      async function focusThenStopCodex() {
+        const hasControl = await acquireControlIfAvailable();
+        if (!hasControl) {
+          setLog("Another viewer is controlling this session right now.");
+          refreshSessionState();
+          return;
+        }
+
+        await sendCommand("focus_codex");
+        await sendCommand("interrupt_codex");
+      }
+
       async function sendPrompt(submit) {
         const text = promptField.value.trim();
         if (!text) {
@@ -335,7 +347,7 @@
       connectButton.addEventListener("click", connectSocket);
       sendButton.addEventListener("click", () => sendPrompt(true));
       focusCodexButton.addEventListener("click", () => sendCommand("focus_codex"));
-      stopCodexButton.addEventListener("click", () => sendCommand("interrupt_codex"));
+      stopComposerButton.addEventListener("click", focusThenStopCodex);
       monitorToggleButton.addEventListener("click", toggleMonitor);
 
       updateControlUi();

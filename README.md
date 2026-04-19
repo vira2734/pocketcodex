@@ -55,7 +55,7 @@ The prototype is split into three pieces:
    - polls the FastAPI service for queued commands
    - authenticates using the session token
    - activates the `Codex` app
-   - pastes prompt text into the focused Codex prompt field
+   - replaces the existing draft in the focused Codex prompt field before pasting
    - optionally presses Return to submit
 
 ## Repo Layout
@@ -172,7 +172,7 @@ stream testing.
 - The phone viewer currently sends prompt commands rather than raw mouse or keyboard events.
 - The stream is browser-based, so it does not yet require a packaged macOS app.
 - The Mac agent targets an app named `Codex` by default.
-- Prompt injection works best when the Codex prompt field is ready for paste input.
+- Prompt injection now replaces the existing Codex draft by default, which avoids accidental prompt concatenation during phone control.
 - The viewer page now shows recent command results and whether the host and agent appear online.
 - Set `PUBLIC_BASE_URL` to a public HTTPS URL if you want QR codes that open correctly off-network.
 - For reliable cross-network streaming, configure a TURN server in `ICE_SERVERS_JSON`.

@@ -42,6 +42,8 @@ def paste_into_codex(text: str, submit: bool, app_name: str) -> str:
         tell application "{app_name}" to activate
         delay 0.35
         tell application "System Events"
+            keystroke "a" using command down
+            delay 0.08
             keystroke "v" using command down
     '''
     if submit:
@@ -54,7 +56,7 @@ def paste_into_codex(text: str, submit: bool, app_name: str) -> str:
     """
 
     subprocess.run(["osascript", "-e", paste_script], check=True)
-    return f"Pasted prompt into {app_name}" + (" and pressed Return." if submit else ".")
+    return f"Replaced prompt draft in {app_name}" + (" and pressed Return." if submit else ".")
 
 
 def process_command(command: dict, dry_run: bool, app_name: str) -> tuple[bool, str]:

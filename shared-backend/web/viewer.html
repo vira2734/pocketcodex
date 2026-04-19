@@ -40,7 +40,6 @@
             <button id="send" class="execute-button">Execute</button>
             <button id="stopComposer" class="secondary execute-button">Stop</button>
           </div>
-          <div id="log" class="log status">No actions sent yet.</div>
         </div>
       </section>
 
@@ -78,7 +77,6 @@
       const controlBadgeNode = document.getElementById("controlBadge");
       const controllerStatusNode = document.getElementById("controllerStatus");
       const historyNode = document.getElementById("history");
-      const logNode = document.getElementById("log");
       const promptField = document.getElementById("prompt");
       const composerCard = document.getElementById("composerCard");
       const monitorPanel = document.getElementById("monitorPanel");
@@ -117,7 +115,7 @@
       }
 
       function setLog(text) {
-        logNode.textContent = text;
+        console.debug(text);
       }
 
       function describeSeen(value) {

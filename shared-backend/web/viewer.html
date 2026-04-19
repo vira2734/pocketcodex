@@ -13,7 +13,6 @@
 
         <div class="viewer-hero">
           <button id="connect" class="hero-button">Connect to My PC</button>
-          <button id="controlToggle" class="secondary hero-button">Take Control</button>
         </div>
 
         <div class="viewer-stage">
@@ -69,7 +68,6 @@
     <script>
       const sessionInput = document.getElementById("session");
       const connectButton = document.getElementById("connect");
-      const controlToggleButton = document.getElementById("controlToggle");
       const focusCodexButton = document.getElementById("focusCodex");
       const stopCodexButton = document.getElementById("stopCodex");
       const monitorToggleButton = document.getElementById("monitorToggle");
@@ -133,10 +131,37 @@
         controllerStatusNode.textContent = controllerState?.active
           ? `${controllerLabel} is controlling this session. Lease: ${controllerState.lease_seconds}s`
           : "No active controller.";
-        controlToggleButton.textContent = hasControl ? "Release Control" : "Take Control";
         focusCodexButton.disabled = !hasControl;
         stopCodexButton.disabled = !hasControl;
         sendButton.disabled = !hasControl;
+      }
+
+      async function acquireControlIfAvailable() {
+        if (controllerState?.is_current_viewer) {
+          return true;
+        }
+
+        const response = await fetch(`/api/sessions/${sessionInput.value}/control/acquire`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Session-Token": sessionToken,
+          },
+          body: JSON.stringify({ viewer_id: viewerId, label: viewerLabel }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (data.controller) {
+            controllerState = data.controller;
+            updateControlUi();
+          }
+          return false;
+        }
+
+        controllerState = data.controller;
+        updateControlUi();
+        return Boolean(controllerState?.is_current_viewer);
       }
 
       async function ensureRuntimeConfig() {
@@ -227,6 +252,7 @@
           }, 5000);
           pollTimer = setInterval(refreshSessionState, 2000);
           refreshSessionState();
+          acquireControlIfAvailable();
         };
 
         socket.onmessage = async (event) => {
@@ -252,42 +278,14 @@
         };
       }
 
-      async function acquireOrReleaseControl() {
-        const wasController = Boolean(controllerState?.is_current_viewer);
-        const path = controllerState?.is_current_viewer
-          ? `/api/sessions/${sessionInput.value}/control/release`
-          : `/api/sessions/${sessionInput.value}/control/acquire`;
-        const payload = controllerState?.is_current_viewer
-          ? { viewer_id: viewerId }
-          : { viewer_id: viewerId, label: viewerLabel };
-
-        const response = await fetch(path, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Session-Token": sessionToken,
-          },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          setLog(data.detail || "Unable to change control state.");
+      async function sendCommand(kind, options = {}) {
+        const hasControl = await acquireControlIfAvailable();
+        if (!hasControl) {
+          setLog("Another viewer is controlling this session right now.");
           refreshSessionState();
           return;
         }
 
-        controllerState = data.controller;
-        updateControlUi();
-        setLog(controllerState?.is_current_viewer ? "You now control this session." : "Control released.");
-        if (!wasController && controllerState?.is_current_viewer) {
-          composerCard.scrollIntoView({ behavior: "smooth", block: "start" });
-          promptField.focus();
-        }
-        refreshSessionState();
-      }
-
-      async function sendCommand(kind, options = {}) {
         const response = await fetch(`/api/sessions/${sessionInput.value}/commands`, {
           method: "POST",
           headers: {
@@ -335,7 +333,6 @@
       }
 
       connectButton.addEventListener("click", connectSocket);
-      controlToggleButton.addEventListener("click", acquireOrReleaseControl);
       sendButton.addEventListener("click", () => sendPrompt(true));
       focusCodexButton.addEventListener("click", () => sendCommand("focus_codex"));
       stopCodexButton.addEventListener("click", () => sendCommand("interrupt_codex"));

@@ -250,6 +250,13 @@ video {
   gap: 12px;
 }
 
+.execute-button {
+  width: 100%;
+  min-height: 58px;
+  font-size: 1.04rem;
+  justify-content: center;
+}
+
 .viewer-muted {
   color: #8ea9bf;
 }

@@ -47,10 +47,7 @@
             placeholder="Ask Codex to review the latest output, explain a bug, or draft a fix."
           ></textarea>
           <div class="composer-actions">
-            <button id="send">Send</button>
-            <button id="sendNoSubmit" class="secondary">Paste Draft</button>
-            <button id="focusComposerButton" class="secondary">Focus App</button>
-            <button id="stopComposerButton" class="secondary">Stop</button>
+            <button id="send" class="execute-button">Execute</button>
           </div>
           <div id="log" class="log status">No actions sent yet.</div>
         </div>
@@ -87,9 +84,6 @@
       const closeComposerButton = document.getElementById("closeComposer");
       const monitorToggleButton = document.getElementById("monitorToggle");
       const sendButton = document.getElementById("send");
-      const pasteOnlyButton = document.getElementById("sendNoSubmit");
-      const focusComposerButton = document.getElementById("focusComposerButton");
-      const stopComposerButton = document.getElementById("stopComposerButton");
       const remoteVideo = document.getElementById("remote");
       const statusNode = document.getElementById("status");
       const presenceNode = document.getElementById("presence");
@@ -153,9 +147,6 @@
         focusCodexButton.disabled = !hasControl;
         stopCodexButton.disabled = !hasControl;
         sendButton.disabled = !hasControl;
-        pasteOnlyButton.disabled = !hasControl;
-        focusComposerButton.disabled = !hasControl;
-        stopComposerButton.disabled = !hasControl;
       }
 
       async function ensureRuntimeConfig() {
@@ -371,11 +362,8 @@
       connectButton.addEventListener("click", connectSocket);
       controlToggleButton.addEventListener("click", acquireOrReleaseControl);
       sendButton.addEventListener("click", () => sendPrompt(true));
-      pasteOnlyButton.addEventListener("click", () => sendPrompt(false));
       focusCodexButton.addEventListener("click", () => sendCommand("focus_codex"));
       stopCodexButton.addEventListener("click", () => sendCommand("interrupt_codex"));
-      focusComposerButton.addEventListener("click", () => sendCommand("focus_codex"));
-      stopComposerButton.addEventListener("click", () => sendCommand("interrupt_codex"));
       openComposerButton.addEventListener("click", openComposer);
       closeComposerButton.addEventListener("click", closeComposer);
       monitorToggleButton.addEventListener("click", toggleMonitor);

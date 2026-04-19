@@ -69,9 +69,16 @@ def main() -> None:
         assert session["session_id"] == session_id
         token = session["access_token"]
         auth = {"X-Session-Token": token}
+        runtime = fetch_json("http://127.0.0.1:8011/api/runtime-config")
+        assert runtime["local_host_base_url"] == "http://127.0.0.1:8011"
+        assert runtime["public_base_url"].startswith("http://")
+        assert session["host_url"].startswith("http://127.0.0.1:8011/host.html")
+        assert session["host_local_url"] == session["host_url"]
+        assert session["host_public_url"].endswith(f"session={session_id}&token={token}")
 
         session_state = fetch_json(f"http://127.0.0.1:8011/api/sessions/{session_id}", headers=auth)
         assert session_state["session"]["id"] == session_id
+        assert session_state["links"]["host_url"].startswith("http://127.0.0.1:8011/host.html")
         assert session_state["links"]["viewer_url"].endswith(f"session={session_id}&token={token}")
 
         heartbeat = fetch_json(
@@ -150,7 +157,9 @@ def main() -> None:
         index_html = fetch_text("http://127.0.0.1:8011/")
         host_html = fetch_text("http://127.0.0.1:8011/host.html")
         viewer_html = fetch_text("http://127.0.0.1:8011/viewer.html")
+        assert "Host URL (open on Mac)" in index_html
         assert "Viewer QR" in index_html
+        assert "localhost or HTTPS" in host_html
         assert "Start Sharing" in host_html
         assert "Send Prompt" in viewer_html
 

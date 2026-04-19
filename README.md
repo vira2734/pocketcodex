@@ -45,7 +45,7 @@ The prototype is split into three pieces:
    - relays WebRTC signaling messages over WebSocket
 
 2. Mac host
-   - opens the host page in a browser
+   - opens the host page on `localhost` in a browser
    - captures the selected screen or app window with `getDisplayMedia`
    - displays a QR code for the token-protected phone viewer link
    - streams the media to the phone browser using WebRTC
@@ -117,15 +117,17 @@ Create a session there, then use the generated host and viewer links.
 
 The launch page now also shows:
 
+- the localhost host link meant for the Mac
+- the public/LAN viewer link meant for the phone
 - the viewer QR code itself for immediate phone scanning
 - the viewer QR code URL
-- the host URL
-- the exact `mac_agent.py` command including the session token and base URL
+- the host public fallback URL
+- the exact `mac_agent.py` command including the session token and localhost base URL
 
 ### 4. Open the host page on the Mac
 
-Use the generated host link and choose the Codex window or the full screen when the browser asks
-what to share.
+Use the generated localhost host link on the Mac and choose the Codex window or the full screen
+when the browser asks what to share.
 
 ### 5. Open the viewer page on the phone
 
@@ -172,6 +174,7 @@ stream testing.
 - The phone viewer currently sends prompt commands rather than raw mouse or keyboard events.
 - The stream is browser-based, so it does not yet require a packaged macOS app.
 - The Mac agent targets an app named `Codex` by default.
+- Safari screen sharing works when the host page is opened on `localhost` or HTTPS. The app now generates a localhost host link for the Mac by default and warns if the host page is opened from a plain LAN HTTP origin.
 - Prompt injection now replaces the existing Codex draft by default, which avoids accidental prompt concatenation during phone control.
 - The viewer page now shows recent command results and whether the host and agent appear online.
 - Set `PUBLIC_BASE_URL` to a public HTTPS URL if you want QR codes that open correctly off-network.

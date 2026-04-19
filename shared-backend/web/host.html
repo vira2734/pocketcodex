@@ -26,6 +26,7 @@
             <button id="connect">Connect</button>
             <button id="share" class="secondary" disabled>Start Sharing</button>
           </div>
+          <p id="warning" class="status" style="display:none;color:#ffcc80"></p>
           <p id="status" class="status">Idle</p>
           <p id="link" class="status mono"></p>
           <img id="viewerQr" alt="Viewer QR code" style="display:none;max-width:220px;width:100%;border-radius:16px;background:#fff;padding:10px" />
@@ -41,6 +42,7 @@
       const connectButton = document.getElementById("connect");
       const shareButton = document.getElementById("share");
       const preview = document.getElementById("preview");
+      const warningNode = document.getElementById("warning");
       const statusNode = document.getElementById("status");
       const linkNode = document.getElementById("link");
       const viewerQr = document.getElementById("viewerQr");
@@ -59,12 +61,33 @@
         statusNode.textContent = text;
       }
 
+      function isSecureCaptureOrigin() {
+        return window.location.protocol === "https:" ||
+          window.location.hostname === "127.0.0.1" ||
+          window.location.hostname === "localhost";
+      }
+
+      function renderOriginWarning(config) {
+        if (isSecureCaptureOrigin()) {
+          warningNode.style.display = "none";
+          warningNode.textContent = "";
+          return;
+        }
+
+        const localUrl = new URL("/host.html", config.local_host_base_url);
+        localUrl.search = window.location.search;
+        warningNode.style.display = "block";
+        warningNode.textContent =
+          `Safari screen sharing needs this host page on localhost or HTTPS. Open this on the Mac instead: ${localUrl.toString()}`;
+      }
+
       async function ensureRuntimeConfig() {
         if (runtimeConfig) {
           return runtimeConfig;
         }
         const response = await fetch("/api/runtime-config");
         runtimeConfig = await response.json();
+        renderOriginWarning(runtimeConfig);
         return runtimeConfig;
       }
 
@@ -105,6 +128,13 @@
       }
 
       async function startSharing() {
+        const config = await ensureRuntimeConfig();
+        if (!isSecureCaptureOrigin()) {
+          renderOriginWarning(config);
+          setStatus("Open the host page on localhost or HTTPS before starting screen sharing.");
+          return;
+        }
+
         localStream = await navigator.mediaDevices.getDisplayMedia({
           video: { frameRate: 24 },
           audio: false,

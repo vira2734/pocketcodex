@@ -46,11 +46,13 @@
       async function renderLinks(data) {
         linksNode.textContent =
           `Session: ${data.session_id}\n` +
-          `Host URL: ${data.host_url}\n` +
+          `Host URL (open on Mac): ${data.host_url}\n` +
+          `Host URL (public fallback): ${data.host_public_url}\n` +
           `Viewer URL: ${data.viewer_url}\n` +
           `Viewer QR: ${data.viewer_qr_url}\n\n` +
+          `Important: open the host link on the Mac using localhost. The phone should use the viewer link or QR code.\n\n` +
           `Save these tokenized links. Existing session ids cannot be reclaimed without the original link.\n\n` +
-          `Start the Mac agent with:\npython3 mac_agent.py --session ${data.session_id} --token ${data.access_token} --base-url ${runtimeConfig.public_base_url}`;
+          `Start the Mac agent with:\npython3 mac_agent.py --session ${data.session_id} --token ${data.access_token} --base-url ${runtimeConfig.local_host_base_url}`;
         viewerQr.src = data.viewer_qr_url;
         viewerQr.style.display = "block";
       }

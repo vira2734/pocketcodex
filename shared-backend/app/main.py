@@ -4,6 +4,7 @@ import io
 import json
 import os
 import secrets
+import socket
 import sqlite3
 from collections import defaultdict
 from pathlib import Path
@@ -144,23 +145,65 @@ def serialize_command(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def resolve_base_url(request: Request | None) -> str:
+def detect_lan_ip() -> str:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+
+
+def resolve_request_scheme(request: Request | None) -> str:
+    if request is None:
+        return "http"
+    return request.url.scheme
+
+
+def resolve_request_port(request: Request | None) -> int:
+    if request is None:
+        return 8000
+    if request.url.port is not None:
+        return request.url.port
+    return 443 if request.url.scheme == "https" else 80
+
+
+def with_port(scheme: str, host: str, port: int) -> str:
+    default_port = 443 if scheme == "https" else 80
+    if port == default_port:
+        return f"{scheme}://{host}"
+    return f"{scheme}://{host}:{port}"
+
+
+def resolve_public_base_url(request: Request | None) -> str:
     if PUBLIC_BASE_URL:
         return PUBLIC_BASE_URL
-    if request is None:
-        return "http://127.0.0.1:8000"
-    return str(request.base_url).rstrip("/")
+
+    scheme = resolve_request_scheme(request)
+    port = resolve_request_port(request)
+    host = detect_lan_ip()
+    return with_port(scheme, host, port)
+
+
+def resolve_local_host_base_url(request: Request | None) -> str:
+    scheme = resolve_request_scheme(request)
+    port = resolve_request_port(request)
+    return with_port(scheme, "127.0.0.1", port)
 
 
 def build_session_urls(session_id: str, access_token: str, request: Request | None) -> dict[str, str]:
-    base = resolve_base_url(request)
-    host_url = f"{base}/host.html?session={session_id}&token={access_token}"
-    viewer_url = f"{base}/viewer.html?session={session_id}&token={access_token}"
+    local_host_base = resolve_local_host_base_url(request)
+    public_base = resolve_public_base_url(request)
+    host_url = f"{local_host_base}/host.html?session={session_id}&token={access_token}"
+    host_public_url = f"{public_base}/host.html?session={session_id}&token={access_token}"
+    viewer_url = f"{public_base}/viewer.html?session={session_id}&token={access_token}"
     return {
         "host_url": host_url,
+        "host_local_url": host_url,
+        "host_public_url": host_public_url,
         "viewer_url": viewer_url,
-        "host_qr_url": f"{base}/api/sessions/{session_id}/qr.svg?kind=host&token={access_token}",
-        "viewer_qr_url": f"{base}/api/sessions/{session_id}/qr.svg?kind=viewer&token={access_token}",
+        "host_qr_url": f"{public_base}/api/sessions/{session_id}/qr.svg?kind=host&token={access_token}",
+        "viewer_qr_url": f"{public_base}/api/sessions/{session_id}/qr.svg?kind=viewer&token={access_token}",
     }
 
 
@@ -219,7 +262,8 @@ def health() -> dict[str, str]:
 @app.get("/api/runtime-config")
 def runtime_config(request: Request) -> dict[str, Any]:
     return {
-        "public_base_url": resolve_base_url(request),
+        "public_base_url": resolve_public_base_url(request),
+        "local_host_base_url": resolve_local_host_base_url(request),
         "ice_servers": ICE_SERVERS,
     }
 

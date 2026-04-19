@@ -160,7 +160,8 @@ def main() -> None:
         assert "Host URL (open on Mac)" in index_html
         assert "Viewer QR" in index_html
         assert "localhost or HTTPS" in host_html
-        assert "Start Sharing" in host_html
+        assert "Share Window" in host_html
+        assert "Share Entire Screen" in host_html
         assert "Send Prompt" in viewer_html
 
         print("smoke test passed")

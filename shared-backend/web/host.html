@@ -13,10 +13,10 @@
           <div class="row">
             <span class="pill">Mac host</span>
           </div>
-          <h1>Share the Codex window to your phone.</h1>
+          <h1>Share the Codex app or your full screen to your phone.</h1>
           <p class="status">
-            Use this page on the Mac. The stream uses WebRTC. Pick the Codex app window or the full
-            screen when the browser asks what to share.
+            Use this page on the Mac. The stream uses WebRTC. Choose whether to share the Codex app
+            window or your entire screen when Safari asks.
           </p>
           <div class="row">
             <label class="small" for="session">Session</label>
@@ -24,7 +24,8 @@
           <input id="session" class="mono" />
           <div class="row">
             <button id="connect">Connect</button>
-            <button id="share" class="secondary" disabled>Start Sharing</button>
+            <button id="shareWindow" class="secondary" disabled>Share Window</button>
+            <button id="shareScreen" class="secondary" disabled>Share Entire Screen</button>
           </div>
           <p id="warning" class="status" style="display:none;color:#ffcc80"></p>
           <p id="status" class="status">Idle</p>
@@ -40,7 +41,8 @@
     <script>
       const sessionInput = document.getElementById("session");
       const connectButton = document.getElementById("connect");
-      const shareButton = document.getElementById("share");
+      const shareWindowButton = document.getElementById("shareWindow");
+      const shareScreenButton = document.getElementById("shareScreen");
       const preview = document.getElementById("preview");
       const warningNode = document.getElementById("warning");
       const statusNode = document.getElementById("status");
@@ -127,7 +129,7 @@
         throw new Error("Missing session token in host link.");
       }
 
-      async function startSharing() {
+      async function startSharing(mode) {
         const config = await ensureRuntimeConfig();
         if (!isSecureCaptureOrigin()) {
           renderOriginWarning(config);
@@ -135,13 +137,25 @@
           return;
         }
 
+        const videoOptions = { frameRate: 24 };
+        let expectedSelection = "window or full screen";
+
+        if (mode === "window") {
+          videoOptions.displaySurface = "window";
+          videoOptions.preferCurrentTab = false;
+          expectedSelection = "Codex window";
+        } else if (mode === "screen") {
+          videoOptions.displaySurface = "monitor";
+          expectedSelection = "entire screen";
+        }
+
         localStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { frameRate: 24 },
+          video: videoOptions,
           audio: false,
         });
         preview.srcObject = localStream;
         await createPeerConnection();
-        setStatus("Screen selected. Waiting for phone viewer.");
+        setStatus(`Sharing started. If Safari asked, choose ${expectedSelection}. Waiting for phone viewer.`);
       }
 
       async function connectSocket() {
@@ -150,8 +164,9 @@
         socket = new WebSocket(`${wsBase(config.public_base_url)}/ws/session/${sessionInput.value}/host?token=${encodeURIComponent(sessionToken)}`);
 
         socket.onopen = () => {
-          setStatus("Host connected. Start sharing when ready.");
-          shareButton.disabled = false;
+          setStatus("Host connected. Choose window share or full-screen share.");
+          shareWindowButton.disabled = false;
+          shareScreenButton.disabled = false;
           const url = new URL("/viewer.html", config.public_base_url);
           url.searchParams.set("session", sessionInput.value);
           url.searchParams.set("token", sessionToken);
@@ -201,13 +216,15 @@
 
         socket.onclose = () => {
           setStatus("Socket disconnected.");
-          shareButton.disabled = true;
+          shareWindowButton.disabled = true;
+          shareScreenButton.disabled = true;
           clearInterval(heartbeatTimer);
         };
       }
 
       connectButton.addEventListener("click", connectSocket);
-      shareButton.addEventListener("click", startSharing);
+      shareWindowButton.addEventListener("click", () => startSharing("window"));
+      shareScreenButton.addEventListener("click", () => startSharing("screen"));
     </script>
   </body>
 </html>

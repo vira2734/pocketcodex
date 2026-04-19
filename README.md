@@ -47,6 +47,7 @@ The prototype is split into three pieces:
 2. Mac host
    - opens the host page on `localhost` in a browser
    - captures the selected screen or app window with `getDisplayMedia`
+   - exposes separate actions for window sharing and full-screen sharing
    - displays a QR code for the token-protected phone viewer link
    - streams the media to the phone browser using WebRTC
 
@@ -129,6 +130,13 @@ The launch page now also shows:
 Use the generated localhost host link on the Mac and choose the Codex window or the full screen
 when the browser asks what to share.
 
+The host page now offers:
+
+- `Share Window` when you want just the Codex app window
+- `Share Entire Screen` when you want the whole desktop
+
+Safari still controls the final picker, but the UI now makes the intended choice explicit.
+
 ### 5. Open the viewer page on the phone
 
 Use the generated viewer link from the launch page.
@@ -175,6 +183,7 @@ stream testing.
 - The stream is browser-based, so it does not yet require a packaged macOS app.
 - The Mac agent targets an app named `Codex` by default.
 - Safari screen sharing works when the host page is opened on `localhost` or HTTPS. The app now generates a localhost host link for the Mac by default and warns if the host page is opened from a plain LAN HTTP origin.
+- The host page now has separate buttons for window sharing and full-screen sharing to reduce ambiguity in Safari's picker flow.
 - Prompt injection now replaces the existing Codex draft by default, which avoids accidental prompt concatenation during phone control.
 - The viewer page now shows recent command results and whether the host and agent appear online.
 - Set `PUBLIC_BASE_URL` to a public HTTPS URL if you want QR codes that open correctly off-network.

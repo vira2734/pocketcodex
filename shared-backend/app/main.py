@@ -22,7 +22,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request, Response, We
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from qrcode.image.svg import SvgImage
 
 
@@ -31,6 +31,7 @@ DB_PATH = BASE_DIR / "control.db"
 WEB_DIR = BASE_DIR / "web"
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 DEFAULT_ICE_SERVERS = [{"urls": "stun:stun.l.google.com:19302"}]
+CONTROL_LEASE_SECONDS = int(os.getenv("CONTROL_LEASE_SECONDS", "45"))
 
 try:
     ICE_SERVERS = json.loads(os.getenv("ICE_SERVERS_JSON", json.dumps(DEFAULT_ICE_SERVERS)))
@@ -47,9 +48,15 @@ class SessionHeartbeat(BaseModel):
 
 
 class CommandCreate(BaseModel):
-    kind: str = Field(..., pattern="^(prompt_to_codex)$")
-    text: str = Field(..., min_length=1, max_length=8000)
+    kind: str = Field(..., pattern="^(prompt_to_codex|focus_codex|interrupt_codex)$")
+    text: str = Field(default="", max_length=8000)
     submit: bool = True
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> "CommandCreate":
+        if self.kind == "prompt_to_codex" and not self.text.strip():
+            raise ValueError("Prompt text is required for prompt_to_codex commands.")
+        return self
 
 
 class CommandClaim(BaseModel):
@@ -59,6 +66,15 @@ class CommandClaim(BaseModel):
 class CommandComplete(BaseModel):
     ok: bool
     detail: str = Field(..., min_length=1, max_length=12000)
+
+
+class ControlAcquire(BaseModel):
+    viewer_id: str = Field(..., min_length=8, max_length=128)
+    label: str = Field(default="Phone", min_length=1, max_length=100)
+
+
+class ControlRelease(BaseModel):
+    viewer_id: str = Field(..., min_length=8, max_length=128)
 
 
 app = FastAPI(title="PocketCodex", version="0.2.0")
@@ -263,7 +279,15 @@ def get_session_columns(conn: sqlite3.Connection) -> set[str]:
 def ensure_session_schema(conn: sqlite3.Connection) -> None:
     columns = get_session_columns(conn)
     if "access_token" not in columns:
-      conn.execute("ALTER TABLE sessions ADD COLUMN access_token TEXT")
+        conn.execute("ALTER TABLE sessions ADD COLUMN access_token TEXT")
+    if "controller_viewer_id" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN controller_viewer_id TEXT")
+    if "controller_label" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN controller_label TEXT")
+    if "controller_acquired_at" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN controller_acquired_at TEXT")
+    if "controller_last_seen" not in columns:
+        conn.execute("ALTER TABLE sessions ADD COLUMN controller_last_seen TEXT")
 
     rows = conn.execute("SELECT id, access_token FROM sessions").fetchall()
     for row in rows:
@@ -285,7 +309,11 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 last_host_seen TEXT,
                 last_viewer_seen TEXT,
-                last_agent_seen TEXT
+                last_agent_seen TEXT,
+                controller_viewer_id TEXT,
+                controller_label TEXT,
+                controller_acquired_at TEXT,
+                controller_last_seen TEXT
             )
             """
         )
@@ -322,6 +350,67 @@ def serialize_command(row: sqlite3.Row) -> dict[str, Any]:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
+
+
+def parse_db_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    normalized = value.replace(" ", "T")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def get_controller_state(session_row: sqlite3.Row | dict[str, Any], viewer_id: str | None = None) -> dict[str, Any]:
+    controller_viewer_id = session_row["controller_viewer_id"]
+    controller_last_seen = parse_db_timestamp(session_row["controller_last_seen"])
+    active = False
+    if controller_viewer_id and controller_last_seen is not None:
+        active = (datetime.now(timezone.utc) - controller_last_seen).total_seconds() <= CONTROL_LEASE_SECONDS
+
+    return {
+        "active": active,
+        "viewer_id": controller_viewer_id if active else None,
+        "label": session_row["controller_label"] if active else None,
+        "acquired_at": session_row["controller_acquired_at"] if active else None,
+        "last_seen": session_row["controller_last_seen"] if active else None,
+        "lease_seconds": CONTROL_LEASE_SECONDS,
+        "is_current_viewer": bool(active and viewer_id and controller_viewer_id == viewer_id),
+    }
+
+
+def clear_controller_if_stale(conn: sqlite3.Connection, session_row: sqlite3.Row) -> sqlite3.Row:
+    controller_state = get_controller_state(session_row)
+    if controller_state["active"] or not session_row["controller_viewer_id"]:
+        return session_row
+
+    conn.execute(
+        """
+        UPDATE sessions
+        SET controller_viewer_id = NULL,
+            controller_label = NULL,
+            controller_acquired_at = NULL,
+            controller_last_seen = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (session_row["id"],),
+    )
+    return conn.execute("SELECT * FROM sessions WHERE id = ?", (session_row["id"],)).fetchone()
+
+
+def require_session_control(session_row: sqlite3.Row, viewer_id: str | None) -> None:
+    if not viewer_id:
+        raise HTTPException(status_code=409, detail="Take control from the viewer before sending commands.")
+    controller_state = get_controller_state(session_row, viewer_id)
+    if not controller_state["active"]:
+        raise HTTPException(status_code=409, detail="No active controller. Take control from the viewer first.")
+    if not controller_state["is_current_viewer"]:
+        raise HTTPException(status_code=409, detail="Another viewer currently controls this session.")
 
 
 def detect_lan_ip() -> str:
@@ -434,6 +523,25 @@ def touch_session(session_id: str, role: str) -> None:
         )
 
 
+def touch_controller(session_id: str, viewer_id: str) -> None:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if row is None:
+            return
+        row = clear_controller_if_stale(conn, row)
+        if row["controller_viewer_id"] != viewer_id:
+            return
+        conn.execute(
+            """
+            UPDATE sessions
+            SET controller_last_seen = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (session_id,),
+        )
+
+
 def make_qr_svg(data: str) -> str:
     image = qrcode.make(data, image_factory=SvgImage, box_size=8, border=2)
     buffer = io.BytesIO()
@@ -502,10 +610,12 @@ def get_session(
     request: Request,
     x_session_token: str | None = Header(default=None),
     token: str | None = Query(default=None),
+    viewer_id: str | None = Query(default=None),
 ) -> dict[str, Any]:
     row = get_authorized_session(session_id, x_session_token or token)
 
     with get_connection() as conn:
+        row = clear_controller_if_stale(conn, row)
         commands = conn.execute(
             """
             SELECT *
@@ -521,6 +631,7 @@ def get_session(
     session.pop("access_token", None)
     return {
         "session": session,
+        "controller": get_controller_state(row, viewer_id),
         "recent_commands": [serialize_command(command) for command in commands],
         "links": build_session_urls(session_id, row["access_token"], request),
     }
@@ -569,10 +680,87 @@ def heartbeat(
     session_id: str,
     payload: SessionHeartbeat,
     x_session_token: str | None = Header(default=None),
+    x_viewer_id: str | None = Header(default=None),
 ) -> dict[str, str]:
     get_authorized_session(session_id, x_session_token)
     touch_session(session_id, payload.role)
+    if payload.role == "viewer" and x_viewer_id:
+        touch_controller(session_id, x_viewer_id)
     return {"status": "ok"}
+
+
+@app.post("/api/sessions/{session_id}/control/acquire")
+def acquire_control(
+    session_id: str,
+    payload: ControlAcquire,
+    x_session_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    get_authorized_session(session_id, x_session_token)
+
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        row = clear_controller_if_stale(conn, row)
+        controller_state = get_controller_state(row, payload.viewer_id)
+        if controller_state["active"] and not controller_state["is_current_viewer"]:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{controller_state['label'] or 'Another viewer'} currently controls this session.",
+            )
+
+        acquired_at = row["controller_acquired_at"]
+        if row["controller_viewer_id"] != payload.viewer_id or not acquired_at:
+            acquired_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+        conn.execute(
+            """
+            UPDATE sessions
+            SET controller_viewer_id = ?,
+                controller_label = ?,
+                controller_acquired_at = ?,
+                controller_last_seen = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (payload.viewer_id, payload.label, acquired_at, session_id),
+        )
+        updated = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+
+    return {"controller": get_controller_state(updated, payload.viewer_id)}
+
+
+@app.post("/api/sessions/{session_id}/control/release")
+def release_control(
+    session_id: str,
+    payload: ControlRelease,
+    x_session_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    get_authorized_session(session_id, x_session_token)
+
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        row = clear_controller_if_stale(conn, row)
+        if row["controller_viewer_id"] and row["controller_viewer_id"] != payload.viewer_id:
+            raise HTTPException(status_code=409, detail="Only the active controller can release control.")
+
+        conn.execute(
+            """
+            UPDATE sessions
+            SET controller_viewer_id = NULL,
+                controller_label = NULL,
+                controller_acquired_at = NULL,
+                controller_last_seen = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (session_id,),
+        )
+        updated = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+
+    return {"controller": get_controller_state(updated, payload.viewer_id)}
 
 
 @app.post("/api/sessions/{session_id}/commands")
@@ -580,8 +768,15 @@ def create_command(
     session_id: str,
     payload: CommandCreate,
     x_session_token: str | None = Header(default=None),
+    x_viewer_id: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    get_authorized_session(session_id, x_session_token)
+    row = get_authorized_session(session_id, x_session_token)
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        row = clear_controller_if_stale(conn, row)
+    require_session_control(row, x_viewer_id)
     serialized = json.dumps(payload.model_dump())
 
     with get_connection() as conn:

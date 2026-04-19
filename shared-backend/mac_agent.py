@@ -59,19 +59,41 @@ def paste_into_codex(text: str, submit: bool, app_name: str) -> str:
     return f"Replaced prompt draft in {app_name}" + (" and pressed Return." if submit else ".")
 
 
+def activate_codex(app_name: str) -> str:
+    subprocess.run(["osascript", "-e", f'tell application "{app_name}" to activate'], check=True)
+    return f"Brought {app_name} to the front."
+
+
+def interrupt_codex(app_name: str) -> str:
+    interrupt_script = f'''
+        tell application "{app_name}" to activate
+        delay 0.15
+        tell application "System Events"
+            key code 53
+        end tell
+    '''
+    subprocess.run(["osascript", "-e", interrupt_script], check=True)
+    return f"Sent Escape to {app_name}."
+
+
 def process_command(command: dict, dry_run: bool, app_name: str) -> tuple[bool, str]:
     payload = command["payload"]
-    if command["kind"] != "prompt_to_codex":
-        return False, f"Unsupported command kind: {command['kind']}"
-
-    text = payload["text"]
-    submit = bool(payload.get("submit", True))
-
     if dry_run:
-        return True, f"Dry run: would paste {len(text)} characters into {app_name}."
+        if command["kind"] == "prompt_to_codex":
+            return True, f"Dry run: would paste {len(payload['text'])} characters into {app_name}."
+        return True, f"Dry run: would run {command['kind']} on {app_name}."
 
     try:
-        detail = paste_into_codex(text, submit, app_name)
+        if command["kind"] == "prompt_to_codex":
+            text = payload["text"]
+            submit = bool(payload.get("submit", True))
+            detail = paste_into_codex(text, submit, app_name)
+        elif command["kind"] == "focus_codex":
+            detail = activate_codex(app_name)
+        elif command["kind"] == "interrupt_codex":
+            detail = interrupt_codex(app_name)
+        else:
+            return False, f"Unsupported command kind: {command['kind']}"
     except subprocess.CalledProcessError as exc:
         return False, f"AppleScript failed: {exc}"
 

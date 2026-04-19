@@ -7,54 +7,97 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="card">
+    <main class="shell viewer-shell">
+      <section class="card viewer-card">
         <div class="row">
           <span class="pill">Phone viewer</span>
+          <span id="controlBadge" class="glass-chip">View only</span>
         </div>
-        <div class="row">
-          <div style="flex: 1 1 180px">
+        <div class="row" style="margin-top: 12px">
+          <div class="compact-input">
             <label class="small" for="session">Session</label>
             <input id="session" class="mono" />
           </div>
-          <div>
-            <button id="connect">Connect</button>
+          <button id="connect">Connect</button>
+          <button id="controlToggle" class="secondary">Take Control</button>
+        </div>
+
+        <div class="viewer-stage">
+          <div class="video-frame">
+            <video id="remote" autoplay playsinline></video>
+          </div>
+          <div class="viewer-overlay">
+            <div class="viewer-topbar">
+              <span id="status" class="glass-chip">Idle</span>
+              <span id="presence" class="glass-chip">No session data yet.</span>
+            </div>
+            <div class="viewer-quickbar">
+              <button id="focusCodex" class="secondary floating-action">Focus</button>
+              <button id="openComposer" class="secondary floating-action">Composer</button>
+              <button id="stopCodex" class="secondary floating-action">Stop</button>
+            </div>
           </div>
         </div>
-        <p id="status" class="status">Idle</p>
-        <p id="presence" class="status">No session data yet.</p>
-        <div class="video-frame">
-          <video id="remote" autoplay playsinline controls></video>
+
+        <div class="status-grid">
+          <div class="status-card">
+            <strong>Control</strong>
+            <div id="controllerStatus" class="status">No active controller.</div>
+          </div>
+          <div class="status-card">
+            <strong>Recent Actions</strong>
+            <div id="history" class="status">No command history yet.</div>
+          </div>
         </div>
       </section>
 
-      <section class="card">
-        <h2>Send Prompt</h2>
-        <p class="status">
-          This sends a prompt command to the Mac agent. The agent activates the Codex app and pastes
-          the prompt locally.
-        </p>
-        <textarea id="prompt" placeholder="Ask Codex to review the latest output, explain a bug, or draft a fix."></textarea>
-        <div class="row">
-          <button id="send">Send Prompt</button>
-          <button id="sendNoSubmit" class="secondary">Paste Only</button>
+      <section id="composerCard" class="card composer-card">
+        <div class="row composer-toolbar">
+          <div>
+            <h2 style="margin: 0 0 6px 0">Composer</h2>
+            <p class="status" style="margin: 0">
+              Native phone controls send structured actions to the Mac while the live stream remains
+              the source of truth.
+            </p>
+          </div>
         </div>
-        <div id="log" class="log status">No commands sent yet.</div>
-        <div id="history" class="log status" style="margin-top: 12px">No command history yet.</div>
+
+        <div class="stack" style="margin-top: 16px">
+          <textarea
+            id="prompt"
+            placeholder="Ask Codex to review the latest output, explain a bug, or draft a fix."
+          ></textarea>
+          <div class="composer-actions">
+            <button id="send">Send</button>
+            <button id="sendNoSubmit" class="secondary">Paste Draft</button>
+            <button id="focusComposerButton" class="secondary">Focus App</button>
+            <button id="stopComposerButton" class="secondary">Stop</button>
+          </div>
+          <div id="log" class="log status">No actions sent yet.</div>
+        </div>
       </section>
     </main>
 
     <script>
       const sessionInput = document.getElementById("session");
       const connectButton = document.getElementById("connect");
+      const controlToggleButton = document.getElementById("controlToggle");
+      const focusCodexButton = document.getElementById("focusCodex");
+      const openComposerButton = document.getElementById("openComposer");
+      const stopCodexButton = document.getElementById("stopCodex");
       const sendButton = document.getElementById("send");
       const pasteOnlyButton = document.getElementById("sendNoSubmit");
+      const focusComposerButton = document.getElementById("focusComposerButton");
+      const stopComposerButton = document.getElementById("stopComposerButton");
       const remoteVideo = document.getElementById("remote");
       const statusNode = document.getElementById("status");
       const presenceNode = document.getElementById("presence");
-      const logNode = document.getElementById("log");
+      const controlBadgeNode = document.getElementById("controlBadge");
+      const controllerStatusNode = document.getElementById("controllerStatus");
       const historyNode = document.getElementById("history");
+      const logNode = document.getElementById("log");
       const promptField = document.getElementById("prompt");
+      const composerCard = document.getElementById("composerCard");
 
       const params = new URLSearchParams(window.location.search);
       sessionInput.value = params.get("session") || "demo123";
@@ -65,6 +108,24 @@
       let heartbeatTimer;
       let pollTimer;
       let runtimeConfig;
+      let controllerState;
+
+      function storageKey() {
+        return `pocketcodex-viewer:${sessionInput.value}:${sessionToken}`;
+      }
+
+      function ensureViewerId() {
+        const key = storageKey();
+        let existing = localStorage.getItem(key);
+        if (!existing) {
+          existing = (window.crypto?.randomUUID?.() || `viewer-${Math.random().toString(36).slice(2)}`);
+          localStorage.setItem(key, existing);
+        }
+        return existing;
+      }
+
+      const viewerId = ensureViewerId();
+      const viewerLabel = "Phone";
 
       function setStatus(text) {
         statusNode.textContent = text;
@@ -78,6 +139,22 @@
         return value ? value : "offline";
       }
 
+      function updateControlUi() {
+        const hasControl = Boolean(controllerState?.is_current_viewer);
+        const controllerLabel = controllerState?.label || "No active controller";
+        controlBadgeNode.textContent = hasControl ? "You control this session" : "View only";
+        controllerStatusNode.textContent = controllerState?.active
+          ? `${controllerLabel} is controlling this session. Lease: ${controllerState.lease_seconds}s`
+          : "No active controller.";
+        controlToggleButton.textContent = hasControl ? "Release Control" : "Take Control";
+        focusCodexButton.disabled = !hasControl;
+        stopCodexButton.disabled = !hasControl;
+        sendButton.disabled = !hasControl;
+        pasteOnlyButton.disabled = !hasControl;
+        focusComposerButton.disabled = !hasControl;
+        stopComposerButton.disabled = !hasControl;
+      }
+
       async function ensureRuntimeConfig() {
         if (runtimeConfig) {
           return runtimeConfig;
@@ -88,16 +165,20 @@
       }
 
       async function refreshSessionState() {
-        const response = await fetch(`/api/sessions/${sessionInput.value}`, {
+        const url = `/api/sessions/${sessionInput.value}?viewer_id=${encodeURIComponent(viewerId)}`;
+        const response = await fetch(url, {
           headers: { "X-Session-Token": sessionToken },
         });
         if (!response.ok) {
           presenceNode.textContent = "Session not found yet.";
+          controllerStatusNode.textContent = "Session unavailable.";
           return;
         }
 
         const data = await response.json();
         const session = data.session;
+        controllerState = data.controller;
+        updateControlUi();
         presenceNode.textContent =
           `Host: ${describeSeen(session.last_host_seen)} | ` +
           `Viewer: ${describeSeen(session.last_viewer_seen)} | ` +
@@ -155,6 +236,7 @@
               headers: {
                 "Content-Type": "application/json",
                 "X-Session-Token": sessionToken,
+                "X-Viewer-Id": viewerId,
               },
               body: JSON.stringify({ role: "viewer" }),
             });
@@ -186,34 +268,91 @@
         };
       }
 
+      async function acquireOrReleaseControl() {
+        const path = controllerState?.is_current_viewer
+          ? `/api/sessions/${sessionInput.value}/control/release`
+          : `/api/sessions/${sessionInput.value}/control/acquire`;
+        const payload = controllerState?.is_current_viewer
+          ? { viewer_id: viewerId }
+          : { viewer_id: viewerId, label: viewerLabel };
+
+        const response = await fetch(path, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Session-Token": sessionToken,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setLog(data.detail || "Unable to change control state.");
+          refreshSessionState();
+          return;
+        }
+
+        controllerState = data.controller;
+        updateControlUi();
+        setLog(controllerState?.is_current_viewer ? "You now control this session." : "Control released.");
+        refreshSessionState();
+      }
+
+      async function sendCommand(kind, options = {}) {
+        const response = await fetch(`/api/sessions/${sessionInput.value}/commands`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Session-Token": sessionToken,
+            "X-Viewer-Id": viewerId,
+          },
+          body: JSON.stringify({
+            kind,
+            text: options.text || "",
+            submit: options.submit ?? true,
+          }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setLog(data.detail || `Failed to send ${kind}.`);
+          refreshSessionState();
+          return;
+        }
+
+        if (kind === "prompt_to_codex") {
+          setLog(`Queued command #${data.id}\nStatus: ${data.status}\nSubmit: ${data.payload.submit}`);
+        } else {
+          setLog(`Queued ${kind} as command #${data.id}.`);
+        }
+        refreshSessionState();
+      }
+
       async function sendPrompt(submit) {
         const text = promptField.value.trim();
         if (!text) {
           setLog("Enter a prompt first.");
           return;
         }
+        await sendCommand("prompt_to_codex", { text, submit });
+      }
 
-        const response = await fetch(`/api/sessions/${sessionInput.value}/commands`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Session-Token": sessionToken,
-          },
-          body: JSON.stringify({
-            kind: "prompt_to_codex",
-            text,
-            submit,
-          }),
-        });
-
-        const data = await response.json();
-        setLog(`Queued command #${data.id}\nStatus: ${data.status}\nSubmit: ${data.payload.submit}`);
-        refreshSessionState();
+      function openComposer() {
+        composerCard.scrollIntoView({ behavior: "smooth", block: "start" });
+        promptField.focus();
       }
 
       connectButton.addEventListener("click", connectSocket);
+      controlToggleButton.addEventListener("click", acquireOrReleaseControl);
       sendButton.addEventListener("click", () => sendPrompt(true));
       pasteOnlyButton.addEventListener("click", () => sendPrompt(false));
+      focusCodexButton.addEventListener("click", () => sendCommand("focus_codex"));
+      stopCodexButton.addEventListener("click", () => sendCommand("interrupt_codex"));
+      focusComposerButton.addEventListener("click", () => sendCommand("focus_codex"));
+      stopComposerButton.addEventListener("click", () => sendCommand("interrupt_codex"));
+      openComposerButton.addEventListener("click", openComposer);
+
+      updateControlUi();
     </script>
   </body>
 </html>

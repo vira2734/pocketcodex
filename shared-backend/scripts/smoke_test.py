@@ -67,6 +67,7 @@ def main() -> None:
     try:
         wait_for_server("http://127.0.0.1:8011/api/health")
         session_id = f"smk{secrets.token_hex(4)}"[:12]
+        viewer_id = f"viewer-{secrets.token_hex(8)}"
 
         session = fetch_json(
             "http://127.0.0.1:8011/api/sessions",
@@ -88,6 +89,7 @@ def main() -> None:
 
         session_state = fetch_json(f"http://127.0.0.1:8011/api/sessions/{session_id}", headers=auth)
         assert session_state["session"]["id"] == session_id
+        assert session_state["controller"]["active"] is False
         assert session_state["links"]["host_url"].startswith("http://127.0.0.1:8011/host.html")
         assert session_state["links"]["viewer_url"].endswith(f"session={session_id}&token={token}")
         assert session_state["links"]["viewer_lan_url"].endswith(f"session={session_id}&token={token}")
@@ -100,6 +102,15 @@ def main() -> None:
         )
         assert heartbeat["status"] == "ok"
 
+        control = fetch_json(
+            f"http://127.0.0.1:8011/api/sessions/{session_id}/control/acquire",
+            method="POST",
+            payload={"viewer_id": viewer_id, "label": "Smoke Phone"},
+            headers=auth,
+        )
+        assert control["controller"]["active"] is True
+        assert control["controller"]["is_current_viewer"] is True
+
         command = fetch_json(
             f"http://127.0.0.1:8011/api/sessions/{session_id}/commands",
             method="POST",
@@ -108,9 +119,17 @@ def main() -> None:
                 "text": "Hello from smoke test",
                 "submit": True,
             },
-            headers=auth,
+            headers={**auth, "X-Viewer-Id": viewer_id},
         )
         assert command["status"] == "queued"
+
+        focus_command = fetch_json(
+            f"http://127.0.0.1:8011/api/sessions/{session_id}/commands",
+            method="POST",
+            payload={"kind": "focus_codex", "text": "", "submit": True},
+            headers={**auth, "X-Viewer-Id": viewer_id},
+        )
+        assert focus_command["status"] == "queued"
 
         claimed = fetch_json(
             f"http://127.0.0.1:8011/api/sessions/{session_id}/commands/claim-next",
@@ -121,6 +140,15 @@ def main() -> None:
         assert claimed["status"] == "claimed"
         assert claimed["payload"]["text"] == "Hello from smoke test"
 
+        claimed_focus = fetch_json(
+            f"http://127.0.0.1:8011/api/sessions/{session_id}/commands/claim-next",
+            method="POST",
+            payload={"agent_name": "smoke-agent"},
+            headers=auth,
+        )
+        assert claimed_focus["status"] == "claimed"
+        assert claimed_focus["kind"] == "focus_codex"
+
         completed = fetch_json(
             f"http://127.0.0.1:8011/api/sessions/{session_id}/commands/{claimed['id']}/complete",
             method="POST",
@@ -130,8 +158,20 @@ def main() -> None:
         assert completed["status"] == "completed"
         assert completed["result"]["detail"] == "Smoke test complete"
 
-        refreshed = fetch_json(f"http://127.0.0.1:8011/api/sessions/{session_id}", headers=auth)
+        completed_focus = fetch_json(
+            f"http://127.0.0.1:8011/api/sessions/{session_id}/commands/{claimed_focus['id']}/complete",
+            method="POST",
+            payload={"ok": True, "detail": "Focused Codex"},
+            headers=auth,
+        )
+        assert completed_focus["status"] == "completed"
+
+        refreshed = fetch_json(
+            f"http://127.0.0.1:8011/api/sessions/{session_id}?viewer_id={viewer_id}",
+            headers=auth,
+        )
         assert refreshed["session"]["last_viewer_seen"] is not None
+        assert refreshed["controller"]["is_current_viewer"] is True
 
         with ws_connect(f"ws://127.0.0.1:8011/ws/session/{session_id}/viewer?token={token}") as viewer_ws:
             ready = json.loads(viewer_ws.recv())
@@ -201,7 +241,8 @@ def main() -> None:
         assert "localhost or HTTPS" in host_html
         assert "Share Window" in host_html
         assert "Share Entire Screen" in host_html
-        assert "Send Prompt" in viewer_html
+        assert "Take Control" in viewer_html
+        assert "Composer" in viewer_html
 
         print("smoke test passed")
     finally:

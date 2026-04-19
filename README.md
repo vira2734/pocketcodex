@@ -5,7 +5,7 @@ PocketCodex is a personal remote-control prototype for using the Codex app on a 
 The current milestone focuses on the smallest end-to-end loop that is actually useful:
 
 - live stream the Mac screen or Codex window to a phone browser
-- send a prompt from the phone
+- use a stream-first phone console with native control buttons
 - have a local Mac agent focus the Codex app and paste the prompt
 - optionally submit the prompt automatically
 
@@ -20,9 +20,10 @@ Implemented and smoke-tested locally:
 - launch page that creates a session id and displays signed host/viewer links
 - QR-ready viewer links generated from the active session
 - browser host page for Mac screen sharing
-- mobile viewer page for watching the stream and sending prompts
+- mobile viewer page for watching the stream, taking control, and sending native actions
+- single-controller lease so only one connected viewer can issue commands at a time
 - presence and recent-command status in the phone UI
-- Mac agent that polls for commands and can inject prompts into the Codex app using AppleScript
+- Mac agent that polls for commands and can inject prompts, focus Codex, and send Escape via AppleScript
 - temporary Cloudflare Quick Tunnel-style remote trial flow
 - API smoke test for session, command queue, and WebSocket relay flows
 
@@ -43,6 +44,7 @@ The prototype is split into three pieces:
    - issues an unguessable access token per session
    - refuses duplicate session ids so links cannot be re-minted by id alone
    - tracks host, viewer, and agent heartbeats
+   - tracks which viewer currently holds the control lease
    - relays WebRTC signaling messages over WebSocket
    - can start a remote trial tunnel and swap viewer links to that public URL
 
@@ -59,6 +61,7 @@ The prototype is split into three pieces:
    - polls the FastAPI service for queued commands
    - authenticates using the session token
    - activates the `Codex` app
+   - supports native `focus` and `stop` style control actions from the phone viewer
    - replaces the existing draft in the focused Codex prompt field before pasting
    - optionally presses Return to submit
 
@@ -158,6 +161,13 @@ Use the generated viewer link from the launch page.
 
 If you are testing outside your local network, put the server behind a secure tunnel or relay.
 
+The viewer is now a hybrid remote console:
+
+- the live stream stays front and center
+- only one viewer at a time can `Take Control`
+- native buttons on the phone can `Send`, `Paste Draft`, `Focus`, and `Stop`
+- additional viewers can still watch, but they stay read-only until they take control
+
 ### 6. Remote Trial
 
 From the launch page you can click `Start Remote Trial`.
@@ -193,6 +203,7 @@ This validates:
 - command enqueue
 - command claim
 - command completion
+- single-controller lease behavior for viewer-issued commands
 - token-protected access control
 - WebSocket viewer/host message relay
 - QR SVG generation
@@ -211,13 +222,15 @@ stream testing.
 
 ## Current Feature Notes
 
-- The phone viewer currently sends prompt commands rather than raw mouse or keyboard events.
+- The phone viewer is now stream-first, with a native bottom control surface instead of only a raw prompt form.
+- Only the active controller can queue commands; other connected viewers remain read-only until they take control.
+- The phone viewer currently sends structured Codex actions rather than arbitrary raw mouse or keyboard events.
 - The stream is browser-based, so it does not yet require a packaged macOS app.
 - The Mac agent targets an app named `Codex` by default.
 - Safari screen sharing works when the host page is opened on `localhost` or HTTPS. The app now generates a localhost host link for the Mac by default and warns if the host page is opened from a plain LAN HTTP origin.
 - The host page now has separate buttons for window sharing and full-screen sharing to reduce ambiguity in Safari's picker flow.
 - Prompt injection now replaces the existing Codex draft by default, which avoids accidental prompt concatenation during phone control.
-- The viewer page now shows recent command results and whether the host and agent appear online.
+- The viewer page now shows recent command results, controller status, and whether the host and agent appear online.
 - Set `PUBLIC_BASE_URL` to a public HTTPS URL if you want QR codes that open correctly off-network.
 - The launch page now offers both an adaptive viewer QR and a same-Wi-Fi viewer QR. When a remote trial tunnel is active, the adaptive QR points at the public tunnel.
 - For reliable cross-network streaming, configure a TURN server in `ICE_SERVERS_JSON`.

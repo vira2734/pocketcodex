@@ -9,12 +9,15 @@ import urllib.error
 import urllib.request
 
 
-def request_json(method: str, url: str, payload: dict | None = None) -> dict | None:
+def request_json(method: str, url: str, payload: dict | None = None, token: str | None = None) -> dict | None:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["X-Session-Token"] = token
     request = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method=method,
     )
 
@@ -73,7 +76,14 @@ def process_command(command: dict, dry_run: bool, app_name: str) -> tuple[bool, 
     return True, detail
 
 
-def run_loop(base_url: str, session_id: str, poll_seconds: float, dry_run: bool, app_name: str) -> None:
+def run_loop(
+    base_url: str,
+    session_id: str,
+    token: str,
+    poll_seconds: float,
+    dry_run: bool,
+    app_name: str,
+) -> None:
     agent_name = socket.gethostname()
     claim_url = f"{base_url}/api/sessions/{session_id}/commands/claim-next"
     heartbeat_url = f"{base_url}/api/sessions/{session_id}/heartbeat"
@@ -85,12 +95,12 @@ def run_loop(base_url: str, session_id: str, poll_seconds: float, dry_run: bool,
 
     while True:
         try:
-            request_json("POST", heartbeat_url, {"role": "agent"})
-            command = request_json("POST", claim_url, {"agent_name": agent_name})
+            request_json("POST", heartbeat_url, {"role": "agent"}, token=token)
+            command = request_json("POST", claim_url, {"agent_name": agent_name}, token=token)
             if command:
                 ok, detail = process_command(command, dry_run=dry_run, app_name=app_name)
                 complete_url = f"{base_url}/api/sessions/{session_id}/commands/{command['id']}/complete"
-                request_json("POST", complete_url, {"ok": ok, "detail": detail})
+                request_json("POST", complete_url, {"ok": ok, "detail": detail}, token=token)
                 print(f"Completed command {command['id']}: {detail}")
             else:
                 time.sleep(poll_seconds)
@@ -105,6 +115,7 @@ def run_loop(base_url: str, session_id: str, poll_seconds: float, dry_run: bool,
 def main() -> None:
     parser = argparse.ArgumentParser(description="PocketCodex Mac agent")
     parser.add_argument("--session", required=True, help="Session id to watch")
+    parser.add_argument("--token", required=True, help="Session access token")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000", help="FastAPI base URL")
     parser.add_argument("--poll-seconds", type=float, default=2.0, help="Polling interval")
     parser.add_argument("--app-name", default="Codex", help="Application name to activate")
@@ -114,6 +125,7 @@ def main() -> None:
     run_loop(
         base_url=args.base_url.rstrip("/"),
         session_id=args.session,
+        token=args.token,
         poll_seconds=args.poll_seconds,
         dry_run=args.dry_run,
         app_name=args.app_name,

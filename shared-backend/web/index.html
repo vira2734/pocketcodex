@@ -21,47 +21,61 @@
         <input id="session" class="mono" placeholder="Leave blank to generate one" />
         <div class="row">
           <button id="create">Create Session</button>
-          <button id="reuse" class="secondary">Use Existing Session</button>
         </div>
         <div id="links" class="log status">Create a session to generate host and viewer links.</div>
+        <img id="viewerQr" alt="Viewer QR code" style="display:none;max-width:240px;width:100%;border-radius:16px;background:#fff;padding:10px;margin-top:16px" />
       </section>
     </main>
 
     <script>
       const sessionInput = document.getElementById("session");
       const createButton = document.getElementById("create");
-      const reuseButton = document.getElementById("reuse");
       const linksNode = document.getElementById("links");
+      const viewerQr = document.getElementById("viewerQr");
+      let runtimeConfig;
 
-      async function renderLinks(sessionId) {
-        const hostUrl = new URL("/host.html", window.location.origin);
-        hostUrl.searchParams.set("session", sessionId);
-
-        const viewerUrl = new URL("/viewer.html", window.location.origin);
-        viewerUrl.searchParams.set("session", sessionId);
-
-        linksNode.textContent =
-          `Session: ${sessionId}\n` +
-          `Host URL: ${hostUrl.toString()}\n` +
-          `Viewer URL: ${viewerUrl.toString()}\n\n` +
-          `Start the Mac agent with:\npython3 mac_agent.py --session ${sessionId}`;
+      async function ensureRuntimeConfig() {
+        if (runtimeConfig) {
+          return runtimeConfig;
+        }
+        const response = await fetch("/api/runtime-config");
+        runtimeConfig = await response.json();
+        return runtimeConfig;
       }
 
-      async function createSession(useExisting) {
+      async function renderLinks(data) {
+        linksNode.textContent =
+          `Session: ${data.session_id}\n` +
+          `Host URL: ${data.host_url}\n` +
+          `Viewer URL: ${data.viewer_url}\n` +
+          `Viewer QR: ${data.viewer_qr_url}\n\n` +
+          `Save these tokenized links. Existing session ids cannot be reclaimed without the original link.\n\n` +
+          `Start the Mac agent with:\npython3 mac_agent.py --session ${data.session_id} --token ${data.access_token} --base-url ${runtimeConfig.public_base_url}`;
+        viewerQr.src = data.viewer_qr_url;
+        viewerQr.style.display = "block";
+      }
+
+      async function createSession() {
+        await ensureRuntimeConfig();
         const sessionId = sessionInput.value.trim();
-        const payload = useExisting && sessionId ? { session_id: sessionId } : {};
+        const payload = sessionId ? { session_id: sessionId } : {};
         const response = await fetch("/api/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ detail: "Session create failed" }));
+          linksNode.textContent = error.detail || "Session create failed.";
+          viewerQr.style.display = "none";
+          return;
+        }
         const data = await response.json();
         sessionInput.value = data.session_id;
-        renderLinks(data.session_id);
+        renderLinks(data);
       }
 
-      createButton.addEventListener("click", () => createSession(false));
-      reuseButton.addEventListener("click", () => createSession(true));
+      createButton.addEventListener("click", createSession);
     </script>
   </body>
 </html>

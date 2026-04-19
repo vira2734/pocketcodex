@@ -58,11 +58,13 @@
 
       const params = new URLSearchParams(window.location.search);
       sessionInput.value = params.get("session") || "demo123";
+      const sessionToken = params.get("token") || "";
 
       let socket;
       let peer;
       let heartbeatTimer;
       let pollTimer;
+      let runtimeConfig;
 
       function setStatus(text) {
         statusNode.textContent = text;
@@ -76,8 +78,19 @@
         return value ? value : "offline";
       }
 
+      async function ensureRuntimeConfig() {
+        if (runtimeConfig) {
+          return runtimeConfig;
+        }
+        const response = await fetch("/api/runtime-config");
+        runtimeConfig = await response.json();
+        return runtimeConfig;
+      }
+
       async function refreshSessionState() {
-        const response = await fetch(`/api/sessions/${sessionInput.value}`);
+        const response = await fetch(`/api/sessions/${sessionInput.value}`, {
+          headers: { "X-Session-Token": sessionToken },
+        });
         if (!response.ok) {
           presenceNode.textContent = "Session not found yet.";
           return;
@@ -102,22 +115,22 @@
         historyNode.textContent = lines.join("\n");
       }
 
-      function wsBase() {
-        return window.location.origin.replace(/^http/, "ws");
+      function wsBase(baseUrl) {
+        return baseUrl.replace(/^http/, "ws");
       }
 
       async function ensureSession() {
-        await fetch("/api/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: sessionInput.value }),
-        });
+        if (sessionToken) {
+          return;
+        }
+        throw new Error("Missing session token in viewer link.");
       }
 
       async function connectSocket() {
+        const config = await ensureRuntimeConfig();
         await ensureSession();
         peer = new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+          iceServers: config.ice_servers,
         });
 
         peer.ontrack = (event) => {
@@ -130,7 +143,7 @@
           }
         };
 
-        socket = new WebSocket(`${wsBase()}/ws/session/${sessionInput.value}/viewer`);
+        socket = new WebSocket(`${wsBase(config.public_base_url)}/ws/session/${sessionInput.value}/viewer?token=${encodeURIComponent(sessionToken)}`);
         socket.onopen = () => {
           setStatus("Viewer connected. Waiting for host stream.");
           socket.send(JSON.stringify({ type: "viewer-ready" }));
@@ -139,7 +152,10 @@
           heartbeatTimer = setInterval(() => {
             fetch(`/api/sessions/${sessionInput.value}/heartbeat`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "X-Session-Token": sessionToken,
+              },
               body: JSON.stringify({ role: "viewer" }),
             });
           }, 5000);
@@ -179,7 +195,10 @@
 
         const response = await fetch(`/api/sessions/${sessionInput.value}/commands`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Session-Token": sessionToken,
+          },
           body: JSON.stringify({
             kind: "prompt_to_codex",
             text,

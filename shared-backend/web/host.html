@@ -28,6 +28,7 @@
           </div>
           <p id="status" class="status">Idle</p>
           <p id="link" class="status mono"></p>
+          <img id="viewerQr" alt="Viewer QR code" style="display:none;max-width:220px;width:100%;border-radius:16px;background:#fff;padding:10px" />
         </div>
         <div class="video-frame">
           <video id="preview" autoplay muted playsinline></video>
@@ -42,30 +43,43 @@
       const preview = document.getElementById("preview");
       const statusNode = document.getElementById("status");
       const linkNode = document.getElementById("link");
+      const viewerQr = document.getElementById("viewerQr");
 
       const params = new URLSearchParams(window.location.search);
       sessionInput.value = params.get("session") || "demo123";
+      const sessionToken = params.get("token") || "";
 
       let socket;
       let peer;
       let localStream;
       let heartbeatTimer;
+      let runtimeConfig;
 
       function setStatus(text) {
         statusNode.textContent = text;
       }
 
-      function wsBase() {
-        return window.location.origin.replace(/^http/, "ws");
+      async function ensureRuntimeConfig() {
+        if (runtimeConfig) {
+          return runtimeConfig;
+        }
+        const response = await fetch("/api/runtime-config");
+        runtimeConfig = await response.json();
+        return runtimeConfig;
+      }
+
+      function wsBase(baseUrl) {
+        return baseUrl.replace(/^http/, "ws");
       }
 
       async function createPeerConnection() {
+        const config = await ensureRuntimeConfig();
         if (peer) {
           peer.close();
         }
 
         peer = new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+          iceServers: config.ice_servers,
         });
 
         if (localStream) {
@@ -84,11 +98,10 @@
       }
 
       async function ensureSession() {
-        await fetch("/api/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: sessionInput.value }),
-        });
+        if (sessionToken) {
+          return;
+        }
+        throw new Error("Missing session token in host link.");
       }
 
       async function startSharing() {
@@ -102,20 +115,27 @@
       }
 
       async function connectSocket() {
+        const config = await ensureRuntimeConfig();
         await ensureSession();
-        socket = new WebSocket(`${wsBase()}/ws/session/${sessionInput.value}/host`);
+        socket = new WebSocket(`${wsBase(config.public_base_url)}/ws/session/${sessionInput.value}/host?token=${encodeURIComponent(sessionToken)}`);
 
         socket.onopen = () => {
           setStatus("Host connected. Start sharing when ready.");
           shareButton.disabled = false;
-          const url = new URL("/viewer.html", window.location.origin);
+          const url = new URL("/viewer.html", config.public_base_url);
           url.searchParams.set("session", sessionInput.value);
+          url.searchParams.set("token", sessionToken);
           linkNode.textContent = url.toString();
+          viewerQr.src = `/api/sessions/${sessionInput.value}/qr.svg?kind=viewer&token=${encodeURIComponent(sessionToken)}`;
+          viewerQr.style.display = "block";
           clearInterval(heartbeatTimer);
           heartbeatTimer = setInterval(() => {
             fetch(`/api/sessions/${sessionInput.value}/heartbeat`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "X-Session-Token": sessionToken,
+              },
               body: JSON.stringify({ role: "host" }),
             });
           }, 5000);

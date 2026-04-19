@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import subprocess
 import time
 import urllib.request
@@ -12,12 +13,20 @@ from websockets.sync.client import connect as ws_connect
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-def fetch_json(url: str, method: str = "GET", payload: dict | None = None) -> dict:
+def fetch_json(
+    url: str,
+    method: str = "GET",
+    payload: dict | None = None,
+    headers: dict[str, str] | None = None,
+) -> dict:
     body = None if payload is None else json.dumps(payload).encode("utf-8")
+    request_headers = {"Content-Type": "application/json"}
+    if headers:
+        request_headers.update(headers)
     request = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers=request_headers,
         method=method,
     )
     with urllib.request.urlopen(request, timeout=10) as response:
@@ -50,59 +59,67 @@ def main() -> None:
 
     try:
         wait_for_server("http://127.0.0.1:8011/api/health")
+        session_id = f"smk{secrets.token_hex(4)}"[:12]
 
         session = fetch_json(
             "http://127.0.0.1:8011/api/sessions",
             method="POST",
-            payload={"session_id": "smoke123"},
+            payload={"session_id": session_id},
         )
-        assert session["session_id"] == "smoke123"
+        assert session["session_id"] == session_id
+        token = session["access_token"]
+        auth = {"X-Session-Token": token}
 
-        session_state = fetch_json("http://127.0.0.1:8011/api/sessions/smoke123")
-        assert session_state["session"]["id"] == "smoke123"
+        session_state = fetch_json(f"http://127.0.0.1:8011/api/sessions/{session_id}", headers=auth)
+        assert session_state["session"]["id"] == session_id
+        assert session_state["links"]["viewer_url"].endswith(f"session={session_id}&token={token}")
 
         heartbeat = fetch_json(
-            "http://127.0.0.1:8011/api/sessions/smoke123/heartbeat",
+            f"http://127.0.0.1:8011/api/sessions/{session_id}/heartbeat",
             method="POST",
             payload={"role": "viewer"},
+            headers=auth,
         )
         assert heartbeat["status"] == "ok"
 
         command = fetch_json(
-            "http://127.0.0.1:8011/api/sessions/smoke123/commands",
+            f"http://127.0.0.1:8011/api/sessions/{session_id}/commands",
             method="POST",
             payload={
                 "kind": "prompt_to_codex",
                 "text": "Hello from smoke test",
                 "submit": True,
             },
+            headers=auth,
         )
         assert command["status"] == "queued"
 
         claimed = fetch_json(
-            "http://127.0.0.1:8011/api/sessions/smoke123/commands/claim-next",
+            f"http://127.0.0.1:8011/api/sessions/{session_id}/commands/claim-next",
             method="POST",
             payload={"agent_name": "smoke-agent"},
+            headers=auth,
         )
         assert claimed["status"] == "claimed"
         assert claimed["payload"]["text"] == "Hello from smoke test"
 
         completed = fetch_json(
-            f"http://127.0.0.1:8011/api/sessions/smoke123/commands/{claimed['id']}/complete",
+            f"http://127.0.0.1:8011/api/sessions/{session_id}/commands/{claimed['id']}/complete",
             method="POST",
             payload={"ok": True, "detail": "Smoke test complete"},
+            headers=auth,
         )
         assert completed["status"] == "completed"
         assert completed["result"]["detail"] == "Smoke test complete"
 
-        refreshed = fetch_json("http://127.0.0.1:8011/api/sessions/smoke123")
+        refreshed = fetch_json(f"http://127.0.0.1:8011/api/sessions/{session_id}", headers=auth)
         assert refreshed["session"]["last_viewer_seen"] is not None
 
-        with ws_connect("ws://127.0.0.1:8011/ws/session/smoke123/viewer") as viewer_ws:
+        with ws_connect(f"ws://127.0.0.1:8011/ws/session/{session_id}/viewer?token={token}") as viewer_ws:
             ready = json.loads(viewer_ws.recv())
             assert ready["type"] == "socket-ready"
 
-            with ws_connect("ws://127.0.0.1:8011/ws/session/smoke123/host") as host_ws:
+            with ws_connect(f"ws://127.0.0.1:8011/ws/session/{session_id}/host?token={token}") as host_ws:
                 host_ready = json.loads(host_ws.recv())
                 assert host_ready["type"] == "socket-ready"
 
@@ -116,10 +133,24 @@ def main() -> None:
                 assert offer["type"] == "offer"
                 assert offer["role"] == "host"
 
+        qr_svg = fetch_text(f"http://127.0.0.1:8011/api/sessions/{session_id}/qr.svg?kind=viewer&token={token}")
+        assert "<svg" in qr_svg
+
+        duplicate_failed = False
+        try:
+            fetch_json(
+                "http://127.0.0.1:8011/api/sessions",
+                method="POST",
+                payload={"session_id": session_id},
+            )
+        except Exception:
+            duplicate_failed = True
+        assert duplicate_failed, "Duplicate session creation should fail"
+
         index_html = fetch_text("http://127.0.0.1:8011/")
         host_html = fetch_text("http://127.0.0.1:8011/host.html")
         viewer_html = fetch_text("http://127.0.0.1:8011/viewer.html")
-        assert "Create Session" in index_html
+        assert "Viewer QR" in index_html
         assert "Start Sharing" in host_html
         assert "Send Prompt" in viewer_html
 

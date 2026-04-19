@@ -1,22 +1,33 @@
 from __future__ import annotations
 
+import io
 import json
+import os
 import secrets
 import sqlite3
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+import qrcode
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from qrcode.image.svg import SvgImage
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "control.db"
 WEB_DIR = BASE_DIR / "web"
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+DEFAULT_ICE_SERVERS = [{"urls": "stun:stun.l.google.com:19302"}]
+
+try:
+    ICE_SERVERS = json.loads(os.getenv("ICE_SERVERS_JSON", json.dumps(DEFAULT_ICE_SERVERS)))
+except json.JSONDecodeError:
+    ICE_SERVERS = DEFAULT_ICE_SERVERS
 
 
 class SessionCreate(BaseModel):
@@ -42,7 +53,7 @@ class CommandComplete(BaseModel):
     detail: str = Field(..., min_length=1, max_length=12000)
 
 
-app = FastAPI(title="PocketCodex", version="0.1.0")
+app = FastAPI(title="PocketCodex", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -60,12 +71,36 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def generate_access_token() -> str:
+    return secrets.token_urlsafe(24)
+
+
+def get_session_columns(conn: sqlite3.Connection) -> set[str]:
+    rows = conn.execute("PRAGMA table_info(sessions)").fetchall()
+    return {row["name"] for row in rows}
+
+
+def ensure_session_schema(conn: sqlite3.Connection) -> None:
+    columns = get_session_columns(conn)
+    if "access_token" not in columns:
+      conn.execute("ALTER TABLE sessions ADD COLUMN access_token TEXT")
+
+    rows = conn.execute("SELECT id, access_token FROM sessions").fetchall()
+    for row in rows:
+        if not row["access_token"]:
+            conn.execute(
+                "UPDATE sessions SET access_token = ? WHERE id = ?",
+                (generate_access_token(), row["id"]),
+            )
+
+
 def init_db() -> None:
     with get_connection() as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
+                access_token TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 last_host_seen TEXT,
@@ -90,13 +125,7 @@ def init_db() -> None:
             )
             """
         )
-
-
-def ensure_session(session_id: str) -> None:
-    with get_connection() as conn:
-        row = conn.execute("SELECT id FROM sessions WHERE id = ?", (session_id,)).fetchone()
-        if row is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+        ensure_session_schema(conn)
 
 
 def serialize_command(row: sqlite3.Row) -> dict[str, Any]:
@@ -113,6 +142,42 @@ def serialize_command(row: sqlite3.Row) -> dict[str, Any]:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
+
+
+def resolve_base_url(request: Request | None) -> str:
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL
+    if request is None:
+        return "http://127.0.0.1:8000"
+    return str(request.base_url).rstrip("/")
+
+
+def build_session_urls(session_id: str, access_token: str, request: Request | None) -> dict[str, str]:
+    base = resolve_base_url(request)
+    host_url = f"{base}/host.html?session={session_id}&token={access_token}"
+    viewer_url = f"{base}/viewer.html?session={session_id}&token={access_token}"
+    return {
+        "host_url": host_url,
+        "viewer_url": viewer_url,
+        "host_qr_url": f"{base}/api/sessions/{session_id}/qr.svg?kind=host&token={access_token}",
+        "viewer_qr_url": f"{base}/api/sessions/{session_id}/qr.svg?kind=viewer&token={access_token}",
+    }
+
+
+def get_authorized_session(session_id: str, token: str | None) -> sqlite3.Row:
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing session token")
+
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM sessions WHERE id = ? AND access_token = ?",
+            (session_id, token),
+        ).fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=401, detail="Invalid session token")
+
+    return row
 
 
 def touch_session(session_id: str, role: str) -> None:
@@ -134,6 +199,13 @@ def touch_session(session_id: str, role: str) -> None:
         )
 
 
+def make_qr_svg(data: str) -> str:
+    image = qrcode.make(data, image_factory=SvgImage, box_size=8, border=2)
+    buffer = io.BytesIO()
+    image.save(buffer)
+    return buffer.getvalue().decode("utf-8")
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
@@ -144,29 +216,53 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/runtime-config")
+def runtime_config(request: Request) -> dict[str, Any]:
+    return {
+        "public_base_url": resolve_base_url(request),
+        "ice_servers": ICE_SERVERS,
+    }
+
+
 @app.post("/api/sessions")
-def create_session(payload: SessionCreate) -> dict[str, str]:
+def create_session(payload: SessionCreate, request: Request) -> dict[str, Any]:
     session_id = payload.session_id or secrets.token_urlsafe(6).replace("-", "").replace("_", "")
     session_id = session_id[:12]
+    access_token = generate_access_token()
 
     with get_connection() as conn:
+        existing = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if existing is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Session id already exists. Reuse the original tokenized host/viewer links.",
+            )
+
         conn.execute(
             """
-            INSERT OR IGNORE INTO sessions (id)
-            VALUES (?)
+            INSERT INTO sessions (id, access_token)
+            VALUES (?, ?)
             """,
-            (session_id,),
+            (session_id, access_token),
         )
 
-    return {"session_id": session_id}
+    return {
+        "session_id": session_id,
+        "access_token": access_token,
+        **build_session_urls(session_id, access_token, request),
+    }
 
 
 @app.get("/api/sessions/{session_id}")
-def get_session(session_id: str) -> dict[str, Any]:
-    ensure_session(session_id)
+def get_session(
+    session_id: str,
+    request: Request,
+    x_session_token: str | None = Header(default=None),
+    token: str | None = Query(default=None),
+) -> dict[str, Any]:
+    row = get_authorized_session(session_id, x_session_token or token)
 
     with get_connection() as conn:
-        row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
         commands = conn.execute(
             """
             SELECT *
@@ -178,22 +274,46 @@ def get_session(session_id: str) -> dict[str, Any]:
             (session_id,),
         ).fetchall()
 
+    session = dict(row)
+    session.pop("access_token", None)
     return {
-        "session": dict(row),
+        "session": session,
         "recent_commands": [serialize_command(command) for command in commands],
+        "links": build_session_urls(session_id, row["access_token"], request),
     }
 
 
+@app.get("/api/sessions/{session_id}/qr.svg")
+def session_qr(
+    session_id: str,
+    kind: str = Query(pattern="^(host|viewer)$"),
+    token: str | None = Query(default=None),
+    request: Request = None,
+) -> Response:
+    row = get_authorized_session(session_id, token)
+    urls = build_session_urls(session_id, row["access_token"], request)
+    target = urls["host_url"] if kind == "host" else urls["viewer_url"]
+    return Response(content=make_qr_svg(target), media_type="image/svg+xml")
+
+
 @app.post("/api/sessions/{session_id}/heartbeat")
-def heartbeat(session_id: str, payload: SessionHeartbeat) -> dict[str, str]:
-    ensure_session(session_id)
+def heartbeat(
+    session_id: str,
+    payload: SessionHeartbeat,
+    x_session_token: str | None = Header(default=None),
+) -> dict[str, str]:
+    get_authorized_session(session_id, x_session_token)
     touch_session(session_id, payload.role)
     return {"status": "ok"}
 
 
 @app.post("/api/sessions/{session_id}/commands")
-def create_command(session_id: str, payload: CommandCreate) -> dict[str, Any]:
-    ensure_session(session_id)
+def create_command(
+    session_id: str,
+    payload: CommandCreate,
+    x_session_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    get_authorized_session(session_id, x_session_token)
     serialized = json.dumps(payload.model_dump())
 
     with get_connection() as conn:
@@ -210,8 +330,12 @@ def create_command(session_id: str, payload: CommandCreate) -> dict[str, Any]:
 
 
 @app.post("/api/sessions/{session_id}/commands/claim-next")
-def claim_next_command(session_id: str, payload: CommandClaim) -> dict[str, Any] | None:
-    ensure_session(session_id)
+def claim_next_command(
+    session_id: str,
+    payload: CommandClaim,
+    x_session_token: str | None = Header(default=None),
+) -> dict[str, Any] | None:
+    get_authorized_session(session_id, x_session_token)
     touch_session(session_id, "agent")
 
     with get_connection() as conn:
@@ -249,8 +373,9 @@ def complete_command(
     session_id: str,
     command_id: int,
     payload: CommandComplete,
+    x_session_token: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    ensure_session(session_id)
+    get_authorized_session(session_id, x_session_token)
     touch_session(session_id, "agent")
     result_json = json.dumps(payload.model_dump())
 
@@ -283,12 +408,15 @@ async def session_socket(websocket: WebSocket, session_id: str, role: str) -> No
         await websocket.close(code=1008)
         return
 
+    token = websocket.query_params.get("token")
+    try:
+        get_authorized_session(session_id, token)
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
     active_sockets[session_id].append(websocket)
-
-    with get_connection() as conn:
-        conn.execute("INSERT OR IGNORE INTO sessions (id) VALUES (?)", (session_id,))
-
     touch_session(session_id, role)
 
     try:

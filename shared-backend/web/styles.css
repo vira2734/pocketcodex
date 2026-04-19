@@ -62,6 +62,12 @@ textarea {
   resize: vertical;
 }
 
+#prompt {
+  min-height: 52px;
+  height: 52px;
+  padding: 0 16px;
+}
+
 button {
   padding: 12px 16px;
   background: linear-gradient(135deg, #1da1f2, #5fd0ff);

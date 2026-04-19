@@ -32,6 +32,19 @@
         </div>
 
         <div class="stack" style="margin-top: 16px">
+          <details class="chat-history">
+            <summary class="chat-history-toggle">
+              <span class="history-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" focusable="false">
+                  <path
+                    d="M10 2.5c-4.4 0-8 2.9-8 6.5 0 2 1.1 3.7 2.8 4.9v3.6l3.6-2c.5.1 1 .1 1.6.1 4.4 0 8-2.9 8-6.5s-3.6-6.6-8-6.6Zm-3.8 6.6a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm3.8 0a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm3.8 0a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Z"
+                  />
+                </svg>
+              </span>
+              <span>Chat History</span>
+            </summary>
+            <div id="composerHistory" class="chat-history-list">No prompts yet.</div>
+          </details>
           <input
             id="prompt"
             placeholder="Ask Codex to review the latest output, explain a bug, or draft a fix."
@@ -77,6 +90,7 @@
       const controlBadgeNode = document.getElementById("controlBadge");
       const controllerStatusNode = document.getElementById("controllerStatus");
       const historyNode = document.getElementById("history");
+      const composerHistoryNode = document.getElementById("composerHistory");
       const promptField = document.getElementById("prompt");
       const composerCard = document.getElementById("composerCard");
       const monitorPanel = document.getElementById("monitorPanel");
@@ -97,6 +111,10 @@
         return `pocketcodex-viewer:${sessionInput.value}:${sessionToken}`;
       }
 
+      function historyStorageKey() {
+        return `${storageKey()}:prompt-history`;
+      }
+
       function ensureViewerId() {
         const key = storageKey();
         let existing = localStorage.getItem(key);
@@ -109,6 +127,44 @@
 
       const viewerId = ensureViewerId();
       const viewerLabel = "Phone";
+
+      function readPromptHistory() {
+        try {
+          const raw = localStorage.getItem(historyStorageKey());
+          if (!raw) {
+            return [];
+          }
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+
+      function writePromptHistory(items) {
+        localStorage.setItem(historyStorageKey(), JSON.stringify(items.slice(0, 8)));
+      }
+
+      function renderPromptHistory() {
+        const items = readPromptHistory();
+        if (items.length === 0) {
+          composerHistoryNode.textContent = "No prompts yet.";
+          return;
+        }
+
+        composerHistoryNode.innerHTML = items
+          .map(
+            (item) =>
+              `<button type="button" class="history-entry" data-prompt="${encodeURIComponent(item)}">${item}</button>`,
+          )
+          .join("");
+      }
+
+      function appendPromptHistory(text) {
+        const next = [text, ...readPromptHistory().filter((item) => item !== text)];
+        writePromptHistory(next);
+        renderPromptHistory();
+      }
 
       function setStatus(text) {
         statusNode.textContent = text;
@@ -281,7 +337,7 @@
         if (!hasControl) {
           setLog("Another viewer is controlling this session right now.");
           refreshSessionState();
-          return;
+          return null;
         }
 
         const response = await fetch(`/api/sessions/${sessionInput.value}/commands`, {
@@ -302,7 +358,7 @@
         if (!response.ok) {
           setLog(data.detail || `Failed to send ${kind}.`);
           refreshSessionState();
-          return;
+          return null;
         }
 
         if (kind === "prompt_to_codex") {
@@ -311,6 +367,7 @@
           setLog(`Queued ${kind} as command #${data.id}.`);
         }
         refreshSessionState();
+        return data;
       }
 
       async function focusThenStopCodex() {
@@ -331,8 +388,14 @@
           setLog("Enter a prompt first.");
           return;
         }
-        await sendCommand("prompt_to_codex", { text, submit });
+        const data = await sendCommand("prompt_to_codex", { text, submit });
+        if (!data) {
+          return;
+        }
+
+        appendPromptHistory(text);
         if (submit) {
+          promptField.value = "";
           viewerStage.scrollIntoView({ behavior: "smooth", block: "start" });
         }
       }
@@ -347,8 +410,17 @@
       focusCodexButton.addEventListener("click", () => sendCommand("focus_codex"));
       stopComposerButton.addEventListener("click", focusThenStopCodex);
       monitorToggleButton.addEventListener("click", toggleMonitor);
+      composerHistoryNode.addEventListener("click", (event) => {
+        const entry = event.target.closest(".history-entry");
+        if (!entry) {
+          return;
+        }
+        promptField.value = decodeURIComponent(entry.dataset.prompt || "");
+        promptField.focus();
+      });
 
       updateControlUi();
+      renderPromptHistory();
     </script>
   </body>
 </html>

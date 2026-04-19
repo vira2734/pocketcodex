@@ -192,6 +192,60 @@ video {
   gap: 12px;
 }
 
+.chat-history {
+  border-radius: 16px;
+  border: 1px solid rgba(143, 211, 255, 0.14);
+  background: rgba(5, 12, 23, 0.62);
+  overflow: hidden;
+}
+
+.chat-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: #eaf6ff;
+  list-style: none;
+}
+
+.chat-history-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.history-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(95, 208, 255, 0.16);
+  color: #9fe2ff;
+}
+
+.history-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.chat-history-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.history-entry {
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fbff;
+  font-weight: 500;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
 .hidden {
   display: none;
 }

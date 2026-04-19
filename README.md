@@ -4,6 +4,17 @@ Pocket Mac lets you open Codex on your Mac and control it from your phone in a f
 
 The goal is simple: keep Codex running locally on your Mac, stream that experience to your phone, and let your phone act like a lightweight remote control for prompts, focus, and stop actions.
 
+<table>
+  <tr>
+    <td align="center"><strong>Mac Host</strong></td>
+    <td align="center"><strong>Phone Viewer</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/pocket-mac-host.png" alt="Pocket Mac host flow on Mac" width="640" /></td>
+    <td align="center"><img src="docs/images/pocket-mac-phone.jpg" alt="Pocket Mac phone viewer" width="280" /></td>
+  </tr>
+</table>
+
 What it does well today:
 
 - stream your Mac screen to a phone browser

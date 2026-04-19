@@ -77,7 +77,8 @@ def run_desktop(open_browser: bool, port: int | None) -> None:
 
     config = uvicorn.Config(
         "app.main:app",
-        host="127.0.0.1",
+        # Bind on all interfaces so the LAN fallback link works from the phone.
+        host="0.0.0.0",
         port=actual_port,
         log_level="info",
     )

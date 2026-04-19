@@ -17,9 +17,9 @@ Implemented and smoke-tested locally:
 - token-protected host, viewer, and agent access per session
 - session ids are write-once so a guessed id cannot be reclaimed for a token
 - WebSocket signaling for WebRTC offer/answer exchange
-- launch page that creates a session behind the scenes and redirects into the host flow
+- launch page that owns the host flow directly
 - QR-ready viewer links generated from the active session
-- browser host page for Mac screen sharing
+- browser host flow for Mac screen sharing
 - mobile viewer page for watching the stream, taking control, and sending native actions
 - single-controller lease so only one connected viewer can issue commands at a time
 - presence and recent-command status in the phone UI
@@ -49,11 +49,11 @@ The prototype is split into three pieces:
    - can start a remote trial tunnel and swap viewer links to that public URL
 
 2. Mac host
-   - opens the host page on `localhost` in a browser
+   - opens the launch page on `localhost` in a browser
    - captures the full screen with `getDisplayMedia`
    - displays one QR code and one token-protected phone viewer link
-   - shows host and phone connection state in a simplified host UI
-   - keeps using `localhost` for the host page even when a remote trial tunnel is active
+   - shows host and phone connection state in a simplified centered UI
+   - keeps using `localhost` for the Mac-side page even when a remote trial tunnel is active
    - streams the media to the phone browser using WebRTC
 
 3. Mac agent
@@ -70,9 +70,9 @@ The prototype is split into three pieces:
 
 - `shared-backend/app/main.py`: FastAPI app, session store, command queue, signaling server
 - `shared-backend/mac_agent.py`: Mac-side Codex prompt injector
-- `shared-backend/web/host.html`: host page used on the Mac
+- `shared-backend/web/host.html`: standalone host page used on the Mac for direct/debug entry
 - `shared-backend/web/viewer.html`: mobile viewer/control page
-- `shared-backend/web/index.html`: landing page
+- `shared-backend/web/index.html`: one-click Mac host flow
 - `shared-backend/scripts/smoke_test.py`: local API smoke test
 - `shared-backend/scripts/fake_tunnel.py`: deterministic test helper for the remote trial flow
 
@@ -129,40 +129,37 @@ For a dry run that does not type into the Codex app:
 python3 mac_agent.py --session demo123 --token YOUR_SESSION_TOKEN --dry-run
 ```
 
-The streamlined host page can now start the local Mac agent automatically for the active session.
+The streamlined launch/host flow can now start the local Mac agent automatically for the active session.
 The manual command above is still useful as a fallback and for debugging.
 
-### 3. Open the host page on the Mac
+### 3. Open PocketCodex on the Mac
 
 Open:
 
 - `http://127.0.0.1:8000/`
 
-Create a session there, then use the generated host and viewer links.
-
-The launch page is now intentionally simple:
+The launch page now owns the Mac host flow directly:
 
 - one start button on the Mac
 - session creation happens behind the scenes
-- the page redirects into the host flow automatically
-- the host flow then shows the single phone link, single QR code, and phone connection status
+- the same click starts local session setup, tunnel selection, agent startup, and the Safari screen-share request
+- the same page then shows the single phone link, single QR code, and phone connection status
+- once active, the button changes state instead of suggesting another manual share step
 
-### 4. Open the host page on the Mac
+The Mac-side UI intentionally exposes only one path:
 
-Use the generated localhost host link on the Mac and start the streamlined host flow.
-
-The current host UI intentionally exposes only one path:
-
-- `Stream your Mac controls to your phone`
+- `Stream Your Mac Controls to Your Phone`
 - one phone viewer link
 - one QR code
 - one phone connection status indicator
-- host click also starts the local Mac agent for that session
+- the same first click also starts the local Mac agent for that session
 
 Under the hood, the host flow now requests entire-screen sharing only. Safari still controls the
 final picker, so you will be asked to choose the full screen when sharing begins.
 
-### 5. Open the viewer page on the phone
+If you need a direct/debug entry, `host.html` still exists, but the normal product flow should start from `/`.
+
+### 4. Open the viewer page on the phone
 
 Use the generated viewer link from the launch page.
 
@@ -175,15 +172,15 @@ The viewer is now a hybrid remote console:
 - native buttons on the phone can `Send`, `Paste Draft`, `Focus`, and `Stop`
 - additional viewers can still watch, but they stay read-only until they take control
 
-### 6. Remote Trial
+### 5. Remote Trial
 
-The one-click launch flow now starts the remote phone path automatically during host preparation.
+The one-click Mac flow now starts the remote phone path automatically during preparation.
 
 That does three things:
 
-- starts a temporary public tunnel to the local PocketCodex server
-- updates the adaptive viewer link and QR code to the public tunnel URL
-- keeps the separate same-Wi-Fi viewer link available as a fallback
+- starts a temporary public tunnel to the local PocketCodex server when available
+- updates the phone viewer link and QR code to the public tunnel URL
+- falls back to a same-Wi-Fi link when public tunnel providers are unavailable
 
 Important limitations:
 
@@ -234,13 +231,14 @@ stream testing.
 - The phone viewer currently sends structured Codex actions rather than arbitrary raw mouse or keyboard events.
 - The stream is browser-based, so it does not yet require a packaged macOS app.
 - The Mac agent targets an app named `Codex` by default.
-- Safari screen sharing works when the host page is opened on `localhost` or HTTPS. The app now generates a localhost host link for the Mac by default and warns if the host page is opened from a plain LAN HTTP origin.
-- The host page is now intentionally simplified to one visible streaming path. Local-network support still exists in the codebase and launch flow, but the host UI only exposes a single phone link/QR and entire-screen sharing.
-- The launch page is also intentionally simplified to a single start action. Session ids and tokenized links still exist internally, but they are no longer exposed as a setup step in the main UI.
+- Safari screen sharing works when the Mac page is opened on `localhost` or HTTPS.
+- The launch page now doubles as the host flow, so the first click handles session setup, tunnel selection, agent startup, and the browser screen-share prompt in one place.
+- The standalone host page is still present for debugging, but the main UI path is `/`.
 - Prompt injection now replaces the existing Codex draft by default, which avoids accidental prompt concatenation during phone control.
 - The viewer page now shows recent command results, controller status, and whether the host and agent appear online.
 - Set `PUBLIC_BASE_URL` to a public HTTPS URL if you want QR codes that open correctly off-network.
 - The current host flow prefers a public remote-trial phone link and only falls back internally when a tunnel provider is unavailable.
+- If every public tunnel provider fails, the Mac page shows a same-network-only phone link instead of a broken remote link.
 - For reliable cross-network streaming, configure a TURN server in `ICE_SERVERS_JSON`.
 - Reusing a session now means reopening its original signed host/viewer link, not recreating the session by id.
 

@@ -7,94 +7,372 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="shell viewer-shell">
-      <section class="card host-card">
-        <div class="host-layout">
-          <div class="host-panel">
-            <div class="viewer-hero">
-              <button id="start" class="hero-button">
-                <span class="hero-button-content">
-                  <span class="hero-button-icon" aria-hidden="true">
-                    <svg viewBox="0 0 20 20" focusable="false">
-                      <path
-                        d="M4.5 3.5h11a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-4.1v1.6h2a.75.75 0 1 1 0 1.5H6.6a.75.75 0 0 1 0-1.5h2v-1.6H4.5A1.5 1.5 0 0 1 3 12V5a1.5 1.5 0 0 1 1.5-1.5Zm0 1.5v7h11V5h-11Z"
-                      />
-                    </svg>
-                  </span>
-                  <span id="startLabel">Stream Your Mac Controls to Your Phone</span>
-                </span>
-              </button>
-            </div>
+    <main class="shell host-screen">
+      <div class="host-flow launch-flow">
+        <button id="start" class="hero-button host-flow-button">
+          <span class="hero-button-content">
+            <span class="hero-button-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" focusable="false">
+                <path
+                  d="M4.5 3.5h11a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-4.1v1.6h2a.75.75 0 1 1 0 1.5H6.6a.75.75 0 0 1 0-1.5h2v-1.6H4.5A1.5 1.5 0 0 1 3 12V5a1.5 1.5 0 0 1 1.5-1.5Zm0 1.5v7h11V5h-11Z"
+                />
+              </svg>
+            </span>
+            <span id="startLabel">Stream Your Mac Controls to Your Phone</span>
+          </span>
+        </button>
 
-            <div class="host-copy">
-              <span class="pill">PocketCodex</span>
-              <h1 class="host-title">Use Codex on your Mac from your phone.</h1>
-              <p class="status host-subtitle">
-                PocketCodex creates the session behind the scenes and opens the host flow for you.
-                From there you will get one phone link, one QR code, and live connection status.
-              </p>
-            </div>
-
-            <div class="status-card">
-              <strong>Flow</strong>
-              <div class="status">
-                Click once on your Mac, allow full-screen sharing when Safari asks, then scan the QR
-                code with your phone.
-              </div>
-            </div>
-
-            <div id="startStatus" class="status-card hidden"></div>
-          </div>
+        <div id="warning" class="status-card host-warning hidden"></div>
+        <div id="statusCard" class="status-card hidden">
+          <strong>Host Status</strong>
+          <div id="status" class="status">Idle</div>
         </div>
-      </section>
+        <div id="phoneStatusCard" class="status-card hidden">
+          <strong>Phone Status</strong>
+          <div id="phoneStatus" class="status">Waiting for phone connection.</div>
+        </div>
+        <div id="linkCard" class="status-card hidden">
+          <strong>Phone Link</strong>
+          <div id="link" class="status mono host-link">Waiting for connection.</div>
+        </div>
+        <div id="qrWrap" class="host-qr-wrap hidden">
+          <img id="viewerQr" alt="Viewer QR code" class="host-qr" />
+        </div>
+      </div>
     </main>
 
     <script>
       const startButton = document.getElementById("start");
       const startLabelNode = document.getElementById("startLabel");
-      const startStatusNode = document.getElementById("startStatus");
-      let isStarting = false;
+      const warningNode = document.getElementById("warning");
+      const statusCard = document.getElementById("statusCard");
+      const phoneStatusCard = document.getElementById("phoneStatusCard");
+      const linkCard = document.getElementById("linkCard");
+      const qrWrap = document.getElementById("qrWrap");
+      const statusNode = document.getElementById("status");
+      const phoneStatusNode = document.getElementById("phoneStatus");
+      const linkNode = document.getElementById("link");
+      const viewerQr = document.getElementById("viewerQr");
 
-      function setStartState(text, disabled = true) {
-        startLabelNode.textContent = text;
-        startButton.disabled = disabled;
+      let sessionId = "";
+      let sessionToken = "";
+      let socket;
+      let peer;
+      let localStream;
+      let heartbeatTimer;
+      let runtimeConfig;
+      let isConnecting = false;
+      let isPreparing = false;
+      let viewerReady = false;
+      let preparedViewerUrl = "";
+      let preparedViewerQrKind = "viewer";
+
+      function showMonitor() {
+        statusCard.classList.remove("hidden");
+        phoneStatusCard.classList.remove("hidden");
+      }
+
+      function showLink(url, qrKind) {
+        linkCard.classList.remove("hidden");
+        qrWrap.classList.remove("hidden");
+        linkNode.textContent = url;
+        viewerQr.src = `/api/sessions/${sessionId}/qr.svg?kind=${qrKind}&token=${encodeURIComponent(sessionToken)}`;
       }
 
       function setStatus(text) {
-        startStatusNode.classList.remove("hidden");
-        startStatusNode.textContent = text;
+        showMonitor();
+        statusNode.textContent = text;
+      }
+
+      function setPhoneStatus(text) {
+        showMonitor();
+        phoneStatusNode.textContent = text;
+      }
+
+      function updateStartButton() {
+        const connected = socket?.readyState === WebSocket.OPEN;
+        const sharing = Boolean(localStream);
+        if (sharing || connected) {
+          startLabelNode.textContent = "Active on Your Mac";
+        } else if (isPreparing || isConnecting) {
+          startLabelNode.textContent = "Preparing Stream...";
+        } else {
+          startLabelNode.textContent = "Stream Your Mac Controls to Your Phone";
+        }
+        startButton.classList.toggle("is-connected", connected || sharing);
+        startButton.disabled = isPreparing || isConnecting || connected || sharing;
+      }
+
+      function isSecureCaptureOrigin() {
+        return window.location.protocol === "https:" ||
+          window.location.hostname === "127.0.0.1" ||
+          window.location.hostname === "localhost";
+      }
+
+      function renderOriginWarning(config) {
+        if (isSecureCaptureOrigin()) {
+          warningNode.classList.add("hidden");
+          warningNode.textContent = "";
+          return;
+        }
+
+        const localUrl = new URL("/", config.local_host_base_url);
+        warningNode.classList.remove("hidden");
+        warningNode.textContent =
+          `Safari screen sharing needs this page on localhost or HTTPS. Open this on the Mac instead: ${localUrl.toString()}`;
+      }
+
+      async function ensureRuntimeConfig() {
+        if (runtimeConfig) {
+          return runtimeConfig;
+        }
+        const response = await fetch("/api/runtime-config");
+        runtimeConfig = await response.json();
+        renderOriginWarning(runtimeConfig);
+        return runtimeConfig;
+      }
+
+      function wsBase(baseUrl) {
+        return baseUrl.replace(/^http/, "ws");
+      }
+
+      async function createPeerConnection() {
+        const config = await ensureRuntimeConfig();
+        if (peer) {
+          peer.close();
+        }
+
+        peer = new RTCPeerConnection({
+          iceServers: config.ice_servers,
+        });
+
+        if (localStream) {
+          for (const track of localStream.getTracks()) {
+            peer.addTrack(track, localStream);
+          }
+        }
+
+        peer.onicecandidate = (event) => {
+          if (event.candidate && socket?.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "candidate", candidate: event.candidate }));
+          }
+        };
+
+        return peer;
+      }
+
+      async function createSession() {
+        if (sessionId && sessionToken) {
+          return;
+        }
+        const response = await fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (!response.ok) {
+          throw new Error("Unable to create a session.");
+        }
+        const data = await response.json();
+        sessionId = data.session_id;
+        sessionToken = data.access_token;
+      }
+
+      async function sendOfferToViewer() {
+        if (!viewerReady || !localStream || !peer || socket?.readyState !== WebSocket.OPEN) {
+          return;
+        }
+
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        socket.send(JSON.stringify({ type: "offer", sdp: offer }));
+        setStatus("Offer sent to viewer.");
+        setPhoneStatus("Phone connected. Establishing stream.");
+      }
+
+      function requestScreenShare() {
+        if (!isSecureCaptureOrigin()) {
+          throw new Error("Open this page on localhost or HTTPS before starting screen sharing.");
+        }
+
+        return navigator.mediaDevices.getDisplayMedia({
+          video: {
+            frameRate: 24,
+            displaySurface: "monitor",
+          },
+          audio: false,
+        });
+      }
+
+      async function attachLocalStream(stream) {
+        localStream = stream;
+        await createPeerConnection();
+        setStatus("Sharing started. If Safari asked, choose your entire screen.");
+        setPhoneStatus("Waiting for phone connection.");
+        await sendOfferToViewer();
+      }
+
+      async function prepareHostFlow() {
+        if (isPreparing) {
+          return false;
+        }
+
+        isPreparing = true;
+        updateStartButton();
+        await ensureRuntimeConfig();
+        await createSession();
+        const prepareResponse = await fetch(`/api/sessions/${sessionId}/host/prepare`, {
+          method: "POST",
+          headers: {
+            "X-Session-Token": sessionToken,
+          },
+        });
+        if (!prepareResponse.ok) {
+          isPreparing = false;
+          updateStartButton();
+          setStatus("Unable to prepare the local host flow.");
+          return false;
+        }
+        const prepared = await prepareResponse.json();
+        const preparedLinks = prepared.links || {};
+        const remoteTrialReady = Boolean(prepared.remote_trial?.active);
+        const remoteViewerUrl = preparedLinks.viewer_url || "";
+        const lanViewerUrl = preparedLinks.viewer_lan_url || "";
+        const usingRemoteViewer = remoteTrialReady && remoteViewerUrl.startsWith("https://");
+        preparedViewerUrl = usingRemoteViewer ? remoteViewerUrl : lanViewerUrl;
+        preparedViewerQrKind = usingRemoteViewer ? "viewer" : "viewer_lan";
+        showLink(preparedViewerUrl, preparedViewerQrKind);
+
+        if (usingRemoteViewer) {
+          setStatus("Host is ready. Completing screen share setup.");
+          setPhoneStatus("Waiting for phone connection.");
+        } else {
+          setStatus("Remote phone link unavailable. Same-network link is ready.");
+          setPhoneStatus("Waiting for phone connection on the same Wi-Fi/network.");
+        }
+        isPreparing = false;
+        updateStartButton();
+        return true;
+      }
+
+      async function connectSocket() {
+        if (socket?.readyState === WebSocket.OPEN || isConnecting) {
+          return true;
+        }
+
+        isConnecting = true;
+        updateStartButton();
+
+        socket = new WebSocket(`${wsBase(window.location.origin)}/ws/session/${sessionId}/host?token=${encodeURIComponent(sessionToken)}`);
+
+        socket.onopen = () => {
+          isConnecting = false;
+          updateStartButton();
+          if (localStream) {
+            setStatus("Host connected. Screen sharing active.");
+          } else {
+            setStatus("Host connected. Completing screen share setup.");
+          }
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = setInterval(() => {
+            fetch(`/api/sessions/${sessionId}/heartbeat`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Session-Token": sessionToken,
+              },
+              body: JSON.stringify({ role: "host" }),
+            });
+          }, 5000);
+        };
+
+        socket.onmessage = async (event) => {
+          const message = JSON.parse(event.data);
+
+          if (message.type === "viewer-ready") {
+            viewerReady = true;
+            if (!localStream) {
+              setPhoneStatus("Phone connected, waiting for stream.");
+              return;
+            }
+
+            await createPeerConnection();
+            await sendOfferToViewer();
+            return;
+          }
+
+          if (message.type === "answer" && peer) {
+            await peer.setRemoteDescription(new RTCSessionDescription(message.sdp));
+            setStatus("Viewer connected.");
+            setPhoneStatus("Phone connected.");
+            return;
+          }
+
+          if (message.type === "candidate" && peer && message.candidate) {
+            await peer.addIceCandidate(new RTCIceCandidate(message.candidate));
+          }
+        };
+
+        socket.onerror = () => {
+          isConnecting = false;
+          updateStartButton();
+        };
+
+        socket.onclose = () => {
+          isConnecting = false;
+          updateStartButton();
+          setStatus("Socket disconnected.");
+          setPhoneStatus("Phone disconnected.");
+          clearInterval(heartbeatTimer);
+        };
+        return true;
       }
 
       async function startFlow() {
-        if (isStarting) {
+        let sharePromise = null;
+        if (!localStream) {
+          try {
+            sharePromise = requestScreenShare();
+            setStatus("Preparing screen share and phone link...");
+          } catch (error) {
+            setStatus(error?.message || "Unable to start screen sharing.");
+            return;
+          }
+        }
+
+        const prepared = await prepareHostFlow();
+        if (!prepared) {
           return;
         }
-        isStarting = true;
-        setStartState("Preparing PocketCodex...");
-        setStatus("Creating a local session and opening the host flow...");
 
-        try {
-          const response = await fetch("/api/sessions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({}),
-          });
-          if (!response.ok) {
-            throw new Error("Unable to create a session.");
+        await connectSocket();
+
+        if (sharePromise) {
+          try {
+            const stream = await sharePromise;
+            await attachLocalStream(stream);
+          } catch (error) {
+            setStatus(`Unable to start sharing: ${error?.message || error}`);
+            return;
           }
-          const data = await response.json();
-          const hostUrl = new URL(data.host_url);
-          hostUrl.searchParams.set("autostart", "1");
-          window.location.href = hostUrl.toString();
-        } catch (error) {
-          isStarting = false;
-          setStartState("Stream Your Mac Controls to Your Phone", false);
-          setStatus(error?.message || "Unable to start PocketCodex.");
+        }
+
+        if (socket?.readyState === WebSocket.OPEN) {
+          setStatus("Host connected. Screen sharing active.");
+        } else {
+          setStatus("Preparing live connection...");
         }
       }
 
-      startButton.addEventListener("click", startFlow);
-      setStartState("Stream Your Mac Controls to Your Phone", false);
+      startButton.addEventListener("click", () => {
+        startFlow().catch((error) => {
+          isPreparing = false;
+          isConnecting = false;
+          updateStartButton();
+          setStatus(error?.message || "Unable to start PocketCodex.");
+        });
+      });
+      updateStartButton();
     </script>
   </body>
 </html>

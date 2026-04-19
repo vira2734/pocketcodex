@@ -164,13 +164,46 @@ video {
   padding-bottom: 120px;
 }
 
+.host-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 20px;
+}
+
+.host-screen {
+  display: grid;
+  place-items: center;
+  padding-bottom: 20px;
+}
+
+.host-flow {
+  width: min(420px, calc(100vw - 40px));
+  display: grid;
+  gap: 16px;
+}
+
+.launch-shell {
+  display: grid;
+  place-items: center;
+  padding-bottom: 20px;
+}
+
+.launch-stack {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+}
+
 .viewer-card,
 .composer-card {
   max-width: 1080px;
 }
 
 .host-card {
-  max-width: 1180px;
+  max-width: 560px;
+  width: min(100%, 560px);
+  margin: 0;
 }
 
 .composer-card.is-disabled {
@@ -186,6 +219,7 @@ video {
   display: grid;
   gap: 14px;
   margin-bottom: 18px;
+  width: 100%;
 }
 
 .host-layout {
@@ -196,32 +230,24 @@ video {
 .host-panel {
   display: grid;
   gap: 16px;
-}
-
-.host-copy {
-  display: grid;
-  gap: 10px;
-}
-
-.host-title {
-  margin: 0;
-  font-size: clamp(1.7rem, 3.8vw, 2.4rem);
-  line-height: 1.05;
-}
-
-.host-subtitle {
-  margin: 0;
-  max-width: 56ch;
+  width: 100%;
+  justify-items: stretch;
 }
 
 .hero-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: stretch;
+  align-self: stretch;
   width: 100%;
   min-height: 68px;
   font-size: 1.08rem;
   border-radius: 18px;
   letter-spacing: 0.01em;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
-  justify-content: center;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .hero-button-content {
@@ -243,6 +269,19 @@ video {
   width: 24px;
   height: 24px;
   fill: currentColor;
+}
+
+.host-flow-button {
+  width: 100%;
+}
+
+.launch-button {
+  width: auto;
+  min-width: min(420px, calc(100vw - 80px));
+}
+
+.launch-status {
+  width: min(100%, 520px);
 }
 
 .hero-button.is-connected {
@@ -287,15 +326,6 @@ video {
   background: #ffffff;
   padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.host-preview-frame {
-  min-height: 460px;
-}
-
-.host-preview-frame video {
-  min-height: 460px;
-  object-fit: contain;
 }
 
 .viewer-stage .video-frame {

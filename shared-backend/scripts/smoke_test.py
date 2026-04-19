@@ -236,9 +236,8 @@ def main() -> None:
         host_html = fetch_text("http://127.0.0.1:8011/host.html")
         viewer_html = fetch_text("http://127.0.0.1:8011/viewer.html")
         assert "Stream Your Mac Controls to Your Phone" in index_html
-        assert "Creating a local session and opening the host flow" in index_html
         assert "localhost or HTTPS" in host_html
-        assert "Stream your Mac controls to your phone." in host_html
+        assert "Host Status" in host_html
         assert "Phone Status" in host_html
         assert "Connect to Computer" in viewer_html
         assert "Talk to Your Computer" in viewer_html

@@ -7,62 +7,41 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="shell viewer-shell">
-      <section class="card host-card">
-        <div class="host-layout">
-          <div class="host-panel">
-            <div class="viewer-hero">
-              <button id="connect" class="hero-button">
-                <span class="hero-button-content">
-                  <span class="hero-button-icon" aria-hidden="true">
-                    <svg viewBox="0 0 20 20" focusable="false">
-                      <path
-                        d="M4.5 3.5h11a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-4.1v1.6h2a.75.75 0 1 1 0 1.5H6.6a.75.75 0 0 1 0-1.5h2v-1.6H4.5A1.5 1.5 0 0 1 3 12V5a1.5 1.5 0 0 1 1.5-1.5Zm0 1.5v7h11V5h-11Z"
-                      />
-                    </svg>
-                  </span>
-                  <span id="connectLabel">Stream Your Mac Controls to Your Phone</span>
-                </span>
-              </button>
-            </div>
-
-            <div class="host-copy">
-              <span class="pill">Host Computer</span>
-              <h1 class="host-title">Stream your Mac controls to your phone.</h1>
-              <p class="status host-subtitle">
-                Use this page on the computer. The host flow now shares the entire screen only and
-                gives your phone a single link and QR code to connect.
-              </p>
-            </div>
-
-            <div id="warning" class="status-card host-warning hidden"></div>
-            <div class="status-card">
-              <strong>Host Status</strong>
-              <div id="status" class="status">Idle</div>
-            </div>
-            <div class="status-card">
-              <strong>Phone Status</strong>
-              <div id="phoneStatus" class="status">Waiting for phone connection.</div>
-            </div>
-            <div class="status-card">
-              <strong>Phone Link</strong>
-              <div id="link" class="status mono host-link">Waiting for connection.</div>
-            </div>
-            <div class="host-qr-wrap">
-              <img id="viewerQr" alt="Viewer QR code" class="host-qr hidden" />
-            </div>
-          </div>
-
-          <div class="video-frame host-preview-frame">
-            <video id="preview" autoplay muted playsinline></video>
-          </div>
+    <main class="shell host-screen">
+      <div class="host-flow">
+        <button id="connect" class="hero-button host-flow-button">
+          <span class="hero-button-content">
+            <span class="hero-button-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" focusable="false">
+                <path
+                  d="M4.5 3.5h11a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-4.1v1.6h2a.75.75 0 1 1 0 1.5H6.6a.75.75 0 0 1 0-1.5h2v-1.6H4.5A1.5 1.5 0 0 1 3 12V5a1.5 1.5 0 0 1 1.5-1.5Zm0 1.5v7h11V5h-11Z"
+                />
+              </svg>
+            </span>
+            <span id="connectLabel">Stream Your Mac Controls to Your Phone</span>
+          </span>
+        </button>
+        <div id="warning" class="status-card host-warning hidden"></div>
+        <div class="status-card">
+          <strong>Host Status</strong>
+          <div id="status" class="status">Idle</div>
         </div>
-      </section>
+        <div class="status-card">
+          <strong>Phone Status</strong>
+          <div id="phoneStatus" class="status">Waiting for phone connection.</div>
+        </div>
+        <div class="status-card">
+          <strong>Phone Link</strong>
+          <div id="link" class="status mono host-link">Waiting for connection.</div>
+        </div>
+        <div class="host-qr-wrap">
+          <img id="viewerQr" alt="Viewer QR code" class="host-qr hidden" />
+        </div>
+      </div>
     </main>
 
     <script>
       const connectButton = document.getElementById("connect");
-      const preview = document.getElementById("preview");
       const warningNode = document.getElementById("warning");
       const statusNode = document.getElementById("status");
       const phoneStatusNode = document.getElementById("phoneStatus");
@@ -81,6 +60,10 @@
       let heartbeatTimer;
       let runtimeConfig;
       let isConnecting = false;
+      let isPreparing = false;
+      let viewerReady = false;
+      let preparedViewerUrl = "";
+      let preparedViewerQrKind = "viewer";
 
       function setStatus(text) {
         statusNode.textContent = text;
@@ -92,13 +75,16 @@
 
       function updateConnectButton() {
         const connected = socket?.readyState === WebSocket.OPEN;
-        connectLabelNode.textContent = connected
-          ? "Host Ready"
-          : isConnecting
-            ? "Preparing Stream..."
-            : "Stream Your Mac Controls to Your Phone";
-        connectButton.classList.toggle("is-connected", connected);
-        connectButton.disabled = isConnecting || connected;
+        const sharing = Boolean(localStream);
+        if (sharing || connected) {
+          connectLabelNode.textContent = "Active on Your Mac";
+        } else if (isPreparing || isConnecting) {
+          connectLabelNode.textContent = "Preparing Stream...";
+        } else {
+          connectLabelNode.textContent = "Stream Your Mac Controls to Your Phone";
+        }
+        connectButton.classList.toggle("is-connected", connected || sharing);
+        connectButton.disabled = isPreparing || isConnecting || connected || sharing;
       }
 
       function isSecureCaptureOrigin() {
@@ -167,35 +153,48 @@
         throw new Error("Missing session token in host link.");
       }
 
-      async function startSharing() {
-        const config = await ensureRuntimeConfig();
-        if (!isSecureCaptureOrigin()) {
-          renderOriginWarning(config);
-          setStatus("Open the host page on localhost or HTTPS before starting screen sharing.");
+      async function sendOfferToViewer() {
+        if (!viewerReady || !localStream || !peer || socket?.readyState !== WebSocket.OPEN) {
           return;
         }
 
-        localStream = await navigator.mediaDevices.getDisplayMedia({
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        socket.send(JSON.stringify({ type: "offer", sdp: offer }));
+        setStatus("Offer sent to viewer.");
+        setPhoneStatus("Phone connected. Establishing stream.");
+      }
+
+      function requestScreenShare() {
+        if (!isSecureCaptureOrigin()) {
+          throw new Error("Open the host page on localhost or HTTPS before starting screen sharing.");
+        }
+
+        return navigator.mediaDevices.getDisplayMedia({
           video: {
             frameRate: 24,
             displaySurface: "monitor",
           },
           audio: false,
         });
-        preview.srcObject = localStream;
+      }
+
+      async function attachLocalStream(stream) {
+        localStream = stream;
         await createPeerConnection();
         setStatus("Sharing started. If Safari asked, choose your entire screen.");
         setPhoneStatus("Waiting for phone connection.");
+        await sendOfferToViewer();
       }
 
-      async function connectSocket() {
-        if (socket?.readyState === WebSocket.OPEN || isConnecting) {
+      async function prepareHostFlow() {
+        if (isPreparing) {
           return;
         }
 
-        isConnecting = true;
+        isPreparing = true;
         updateConnectButton();
-        const config = await ensureRuntimeConfig();
+        await ensureRuntimeConfig();
         await ensureSession();
         const prepareResponse = await fetch(`/api/sessions/${sessionId}/host/prepare`, {
           method: "POST",
@@ -204,38 +203,53 @@
           },
         });
         if (!prepareResponse.ok) {
-          isConnecting = false;
+          isPreparing = false;
           updateConnectButton();
           setStatus("Unable to prepare the local host flow.");
-          return;
+          return false;
         }
         const prepared = await prepareResponse.json();
         const preparedLinks = prepared.links || {};
         const remoteTrialReady = Boolean(prepared.remote_trial?.active);
-        const viewerUrl = preparedLinks.viewer_url || "";
-        if (!remoteTrialReady || !viewerUrl.startsWith("https://")) {
-          isConnecting = false;
-          updateConnectButton();
-          setStatus("Unable to start the remote phone link right now. Please try again.");
-          setPhoneStatus("Phone link unavailable.");
-          linkNode.textContent = "Remote phone link unavailable.";
-          viewerQr.classList.add("hidden");
-          return;
+        const remoteViewerUrl = preparedLinks.viewer_url || "";
+        const lanViewerUrl = preparedLinks.viewer_lan_url || "";
+        const usingRemoteViewer = remoteTrialReady && remoteViewerUrl.startsWith("https://");
+        preparedViewerUrl = usingRemoteViewer ? remoteViewerUrl : lanViewerUrl;
+        preparedViewerQrKind = usingRemoteViewer ? "viewer" : "viewer_lan";
+
+        if (usingRemoteViewer) {
+          setStatus("Host is ready. Click to share your screen.");
+          setPhoneStatus("Waiting for phone connection.");
+        } else {
+          setStatus("Remote phone link unavailable. Same-network link is ready. Click to share your screen.");
+          setPhoneStatus("Waiting for phone connection on the same Wi-Fi/network.");
         }
+        linkNode.textContent = preparedViewerUrl;
+        viewerQr.src = `/api/sessions/${sessionId}/qr.svg?kind=${preparedViewerQrKind}&token=${encodeURIComponent(sessionToken)}`;
+        viewerQr.classList.remove("hidden");
+        isPreparing = false;
+        updateConnectButton();
+        return true;
+      }
+
+      async function connectSocket() {
+        if (socket?.readyState === WebSocket.OPEN || isConnecting) {
+          return true;
+        }
+
+        isConnecting = true;
+        updateConnectButton();
 
         socket = new WebSocket(`${wsBase(window.location.origin)}/ws/session/${sessionId}/host?token=${encodeURIComponent(sessionToken)}`);
 
         socket.onopen = () => {
           isConnecting = false;
           updateConnectButton();
-          setStatus("Host connected. Starting full-screen sharing.");
-          setPhoneStatus("Waiting for phone connection.");
-          linkNode.textContent = viewerUrl;
-          viewerQr.src = `/api/sessions/${sessionId}/qr.svg?kind=viewer&token=${encodeURIComponent(sessionToken)}`;
-          viewerQr.classList.remove("hidden");
-          startSharing().catch((error) => {
-            setStatus(`Unable to start sharing: ${error?.message || error}`);
-          });
+          if (localStream) {
+            setStatus("Host connected. Screen sharing active.");
+          } else {
+            setStatus("Host connected. Click to share your screen.");
+          }
           clearInterval(heartbeatTimer);
           heartbeatTimer = setInterval(() => {
             fetch(`/api/sessions/${sessionId}/heartbeat`, {
@@ -253,17 +267,14 @@
           const message = JSON.parse(event.data);
 
           if (message.type === "viewer-ready") {
+            viewerReady = true;
             if (!localStream) {
               setPhoneStatus("Phone connected, waiting for stream.");
               return;
             }
 
             await createPeerConnection();
-            const offer = await peer.createOffer();
-            await peer.setLocalDescription(offer);
-            socket.send(JSON.stringify({ type: "offer", sdp: offer }));
-            setStatus("Offer sent to viewer.");
-            setPhoneStatus("Phone connected. Establishing stream.");
+            await sendOfferToViewer();
             return;
           }
 
@@ -291,15 +302,58 @@
           setPhoneStatus("Phone disconnected.");
           clearInterval(heartbeatTimer);
         };
+        return true;
       }
 
-      connectButton.addEventListener("click", connectSocket);
+      async function handleConnectClick() {
+        let sharePromise = null;
+        if (!localStream) {
+          try {
+            sharePromise = requestScreenShare();
+            setStatus("Preparing screen share and phone link...");
+          } catch (error) {
+            setStatus(error?.message || "Unable to start screen sharing.");
+            return;
+          }
+        }
+
+        if (!preparedViewerUrl) {
+          const prepared = await prepareHostFlow();
+          if (!prepared) {
+            return;
+          }
+        }
+        await connectSocket();
+        if (sharePromise) {
+          try {
+            const stream = await sharePromise;
+            await attachLocalStream(stream);
+          } catch (error) {
+            setStatus(`Unable to start sharing: ${error?.message || error}`);
+            return;
+          }
+        }
+        if (socket?.readyState === WebSocket.OPEN) {
+          setStatus("Host connected. Screen sharing active.");
+        } else {
+          setStatus("Preparing live connection...");
+        }
+      }
+
+      connectButton.addEventListener("click", () => {
+        handleConnectClick().catch((error) => {
+          isPreparing = false;
+          isConnecting = false;
+          updateConnectButton();
+          setStatus(error?.message || "Unable to prepare the host flow.");
+        });
+      });
       updateConnectButton();
       setPhoneStatus("Waiting for phone connection.");
       if (autoStart) {
         queueMicrotask(() => {
-          connectSocket().catch((error) => {
-            isConnecting = false;
+          prepareHostFlow().catch((error) => {
+            isPreparing = false;
             updateConnectButton();
             setStatus(error?.message || "Unable to prepare the host flow.");
           });

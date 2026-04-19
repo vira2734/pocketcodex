@@ -6,6 +6,8 @@ import time
 import urllib.request
 from pathlib import Path
 
+from websockets.sync.client import connect as ws_connect
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -95,6 +97,24 @@ def main() -> None:
 
         refreshed = fetch_json("http://127.0.0.1:8011/api/sessions/smoke123")
         assert refreshed["session"]["last_viewer_seen"] is not None
+
+        with ws_connect("ws://127.0.0.1:8011/ws/session/smoke123/viewer") as viewer_ws:
+            ready = json.loads(viewer_ws.recv())
+            assert ready["type"] == "socket-ready"
+
+            with ws_connect("ws://127.0.0.1:8011/ws/session/smoke123/host") as host_ws:
+                host_ready = json.loads(host_ws.recv())
+                assert host_ready["type"] == "socket-ready"
+
+                viewer_ws.send(json.dumps({"type": "viewer-ready"}))
+                relayed_to_host = json.loads(host_ws.recv())
+                assert relayed_to_host["type"] == "viewer-ready"
+                assert relayed_to_host["role"] == "viewer"
+
+                host_ws.send(json.dumps({"type": "offer", "sdp": {"type": "offer", "sdp": "fake"}}))
+                offer = json.loads(viewer_ws.recv())
+                assert offer["type"] == "offer"
+                assert offer["role"] == "host"
 
         index_html = fetch_text("http://127.0.0.1:8011/")
         host_html = fetch_text("http://127.0.0.1:8011/host.html")

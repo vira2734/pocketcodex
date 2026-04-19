@@ -20,7 +20,7 @@ Implemented and smoke-tested locally:
 - mobile viewer page for watching the stream and sending prompts
 - presence and recent-command status in the phone UI
 - Mac agent that polls for commands and can inject prompts into the Codex app using AppleScript
-- API smoke test for session and command queue flows
+- API smoke test for session, command queue, and WebSocket relay flows
 
 Not done yet:
 
@@ -124,6 +124,7 @@ This validates:
 - command enqueue
 - command claim
 - command completion
+- WebSocket viewer/host message relay
 - static pages
 
 ## macOS Permissions
@@ -131,6 +132,10 @@ This validates:
 The streaming host page needs browser permission to share the screen or window.
 
 The Mac agent needs macOS Accessibility permission to send keystrokes to the Codex app.
+
+At the current prototype stage, the browser-level flow works until Safari reaches the native
+screen/window selection step. That chooser is expected to require human interaction during real
+stream testing.
 
 ## Current Feature Notes
 

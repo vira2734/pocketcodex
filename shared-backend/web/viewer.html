@@ -9,17 +9,11 @@
   <body>
     <main class="shell viewer-shell">
       <section class="card viewer-card">
-        <div class="row">
-          <span class="pill">Phone viewer</span>
-          <span id="controlBadge" class="glass-chip">View only</span>
-        </div>
-        <div class="row" style="margin-top: 12px">
-          <div class="compact-input">
-            <label class="small" for="session">Session</label>
-            <input id="session" class="mono" />
-          </div>
-          <button id="connect">Connect</button>
-          <button id="controlToggle" class="secondary">Take Control</button>
+        <input id="session" class="mono hidden" />
+
+        <div class="viewer-hero">
+          <button id="connect" class="hero-button">Connect to My PC</button>
+          <button id="controlToggle" class="secondary hero-button">Take Control</button>
         </div>
 
         <div class="viewer-stage">
@@ -66,6 +60,10 @@
         <button id="monitorToggle" class="secondary monitor-toggle">Connection Monitor</button>
         <div id="monitorPanel" class="status-grid hidden" style="margin-top: 16px">
           <div id="status" class="status-card compact-status">Idle</div>
+          <div class="status-card">
+            <strong>Viewer Mode</strong>
+            <div id="controlBadge" class="status">View only</div>
+          </div>
           <div id="presence" class="status-card compact-status">No session data yet.</div>
           <div class="status-card">
             <strong>Active Controller</strong>

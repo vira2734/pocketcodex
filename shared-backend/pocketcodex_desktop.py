@@ -52,6 +52,22 @@ def build_runtime_env(base_dir: Path, data_dir: Path, runtime_executable: str, r
     os.environ["POCKETCODEX_WEB_DIR"] = str(base_dir / "web")
     os.environ["POCKETCODEX_DB_PATH"] = str(data_dir / "control.db")
     os.environ["POCKETCODEX_RUNTIME_EXECUTABLE"] = runtime_executable
+    bundled_tools_dir = base_dir / "bundled-tools"
+    cloudflared_path = bundled_tools_dir / "cloudflared"
+    node_path = bundled_tools_dir / "node" / "bin" / "node"
+    localtunnel_entry = bundled_tools_dir / "localtunnel" / "node_modules" / "localtunnel" / "bin" / "lt.js"
+    if cloudflared_path.exists():
+        os.environ["POCKETMAC_CLOUDFLARED"] = str(cloudflared_path)
+    else:
+        os.environ.pop("POCKETMAC_CLOUDFLARED", None)
+    if node_path.exists():
+        os.environ["POCKETMAC_NODE"] = str(node_path)
+    else:
+        os.environ.pop("POCKETMAC_NODE", None)
+    if localtunnel_entry.exists():
+        os.environ["POCKETMAC_LOCALTUNNEL_ENTRY"] = str(localtunnel_entry)
+    else:
+        os.environ.pop("POCKETMAC_LOCALTUNNEL_ENTRY", None)
     if runtime_script:
         os.environ["POCKETCODEX_RUNTIME_SCRIPT"] = runtime_script
     else:

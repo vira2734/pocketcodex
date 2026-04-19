@@ -198,6 +198,15 @@ class RemoteTrialManager:
             command = [part.format(target=target_url) for part in shlex.split(custom)]
             return [(command, "custom")]
 
+        bundled_cloudflared = os.getenv("POCKETMAC_CLOUDFLARED", "").strip()
+        if bundled_cloudflared and Path(bundled_cloudflared).exists():
+            candidates.append(([bundled_cloudflared, "tunnel", "--url", target_url], "cloudflared"))
+
+        bundled_node = os.getenv("POCKETMAC_NODE", "").strip()
+        bundled_localtunnel = os.getenv("POCKETMAC_LOCALTUNNEL_ENTRY", "").strip()
+        if bundled_node and bundled_localtunnel and Path(bundled_node).exists() and Path(bundled_localtunnel).exists():
+            candidates.append(([bundled_node, bundled_localtunnel, "--port", target_port], "localtunnel"))
+
         cloudflared = shutil.which("cloudflared")
         if cloudflared:
             candidates.append(([cloudflared, "tunnel", "--url", target_url], "cloudflared"))

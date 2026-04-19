@@ -88,6 +88,8 @@ own Python installation.
 What the packaged app does:
 
 - bundles the Python runtime and Pocket Mac backend
+- bundles `cloudflared` for public remote links
+- bundles a Node runtime plus `localtunnel` as a second remote fallback
 - stores writable app data under `~/Library/Application Support/PocketMac`
 - launches the local server itself
 - opens the local host UI in the browser
@@ -103,11 +105,13 @@ That produces:
 
 ```bash
 dist/PocketMac.app
+dist/PocketMac.dmg
 ```
 
 The build script was verified locally by:
 
 - building `dist/PocketMac.app`
+- building `dist/PocketMac.dmg`
 - launching the bundled executable directly
 - hitting `/api/health` successfully from the built app runtime
 
@@ -150,9 +154,9 @@ For quick public testing without running your own infra, Pocket Mac now has a te
 
 The current implementation tries tunnel providers in this order:
 
-- `cloudflared` if installed locally
-- `npx wrangler@latest tunnel quick-start`
-- `npx localtunnel --port ...` as an automatic fallback when Quick Tunnel flakes
+- bundled `cloudflared`
+- bundled `localtunnel`
+- same-Wi-Fi LAN fallback when both remote providers are unavailable
 
 ### 2. Start the Mac agent
 

@@ -22,11 +22,6 @@
           <button id="controlToggle" class="secondary">Take Control</button>
         </div>
 
-        <div class="row viewer-status-row">
-          <div id="status" class="status-card compact-status">Idle</div>
-          <div id="presence" class="status-card compact-status">No session data yet.</div>
-        </div>
-
         <div class="viewer-stage">
           <div class="video-frame">
             <video id="remote" autoplay playsinline></video>
@@ -37,17 +32,6 @@
           <button id="focusCodex" class="secondary action-button">Focus</button>
           <button id="openComposer" class="secondary action-button">Open Composer</button>
           <button id="stopCodex" class="secondary action-button">Stop</button>
-        </div>
-
-        <div class="status-grid">
-          <div class="status-card">
-            <strong>Control</strong>
-            <div id="controllerStatus" class="status">No active controller.</div>
-          </div>
-          <div class="status-card">
-            <strong>Recent Actions</strong>
-            <div id="history" class="status">No command history yet.</div>
-          </div>
         </div>
       </section>
 
@@ -77,6 +61,22 @@
           <div id="log" class="log status">No actions sent yet.</div>
         </div>
       </section>
+
+      <section class="card composer-card">
+        <button id="monitorToggle" class="secondary monitor-toggle">Connection Monitor</button>
+        <div id="monitorPanel" class="status-grid hidden" style="margin-top: 16px">
+          <div id="status" class="status-card compact-status">Idle</div>
+          <div id="presence" class="status-card compact-status">No session data yet.</div>
+          <div class="status-card">
+            <strong>Active Controller</strong>
+            <div id="controllerStatus" class="status">No active controller.</div>
+          </div>
+          <div class="status-card">
+            <strong>Recent Actions</strong>
+            <div id="history" class="status">No command history yet.</div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <script>
@@ -87,6 +87,7 @@
       const openComposerButton = document.getElementById("openComposer");
       const stopCodexButton = document.getElementById("stopCodex");
       const closeComposerButton = document.getElementById("closeComposer");
+      const monitorToggleButton = document.getElementById("monitorToggle");
       const sendButton = document.getElementById("send");
       const pasteOnlyButton = document.getElementById("sendNoSubmit");
       const focusComposerButton = document.getElementById("focusComposerButton");
@@ -100,6 +101,8 @@
       const logNode = document.getElementById("log");
       const promptField = document.getElementById("prompt");
       const composerCard = document.getElementById("composerCard");
+      const monitorPanel = document.getElementById("monitorPanel");
+      const viewerStage = document.querySelector(".viewer-stage");
 
       const params = new URLSearchParams(window.location.search);
       sessionInput.value = params.get("session") || "demo123";
@@ -271,6 +274,7 @@
       }
 
       async function acquireOrReleaseControl() {
+        const wasController = Boolean(controllerState?.is_current_viewer);
         const path = controllerState?.is_current_viewer
           ? `/api/sessions/${sessionInput.value}/control/release`
           : `/api/sessions/${sessionInput.value}/control/acquire`;
@@ -297,6 +301,12 @@
         controllerState = data.controller;
         updateControlUi();
         setLog(controllerState?.is_current_viewer ? "You now control this session." : "Control released.");
+        if (!wasController && controllerState?.is_current_viewer) {
+          openComposer();
+        }
+        if (wasController && !controllerState?.is_current_viewer) {
+          closeComposer();
+        }
         refreshSessionState();
       }
 
@@ -337,6 +347,10 @@
           return;
         }
         await sendCommand("prompt_to_codex", { text, submit });
+        if (submit) {
+          closeComposer();
+          viewerStage.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
       }
 
       function openComposer() {
@@ -351,6 +365,11 @@
         openComposerButton.textContent = "Open Composer";
       }
 
+      function toggleMonitor() {
+        const hidden = monitorPanel.classList.toggle("hidden");
+        monitorToggleButton.textContent = hidden ? "Connection Monitor" : "Hide Connection Monitor";
+      }
+
       connectButton.addEventListener("click", connectSocket);
       controlToggleButton.addEventListener("click", acquireOrReleaseControl);
       sendButton.addEventListener("click", () => sendPrompt(true));
@@ -361,6 +380,7 @@
       stopComposerButton.addEventListener("click", () => sendCommand("interrupt_codex"));
       openComposerButton.addEventListener("click", openComposer);
       closeComposerButton.addEventListener("click", closeComposer);
+      monitorToggleButton.addEventListener("click", toggleMonitor);
 
       updateControlUi();
     </script>

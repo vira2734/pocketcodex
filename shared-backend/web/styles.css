@@ -188,7 +188,6 @@ video {
 }
 
 .compact-status {
-  flex: 1 1 220px;
   min-height: 0;
   white-space: normal;
 }
@@ -198,10 +197,14 @@ video {
   justify-content: center;
 }
 
+.monitor-toggle {
+  width: 100%;
+  justify-content: center;
+}
+
 .status-grid {
   display: grid;
   gap: 12px;
-  margin-top: 16px;
 }
 
 .status-card {

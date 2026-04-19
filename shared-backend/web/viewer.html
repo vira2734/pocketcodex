@@ -24,15 +24,13 @@
 
         <div class="row viewer-action-row">
           <button id="focusCodex" class="secondary action-button">Focus</button>
-          <button id="openComposer" class="secondary action-button">Open Composer</button>
           <button id="stopCodex" class="secondary action-button">Stop</button>
         </div>
       </section>
 
-      <section id="composerCard" class="card composer-card hidden">
+      <section id="composerCard" class="card composer-card">
         <div class="row composer-toolbar">
-          <h2 style="margin: 0">Composer</h2>
-          <button id="closeComposer" class="secondary composer-collapse-button" aria-label="Collapse composer">v</button>
+          <h2 style="margin: 0">Talk to Your Mac</h2>
         </div>
 
         <div class="stack" style="margin-top: 16px">
@@ -73,9 +71,7 @@
       const connectButton = document.getElementById("connect");
       const controlToggleButton = document.getElementById("controlToggle");
       const focusCodexButton = document.getElementById("focusCodex");
-      const openComposerButton = document.getElementById("openComposer");
       const stopCodexButton = document.getElementById("stopCodex");
-      const closeComposerButton = document.getElementById("closeComposer");
       const monitorToggleButton = document.getElementById("monitorToggle");
       const sendButton = document.getElementById("send");
       const remoteVideo = document.getElementById("remote");
@@ -285,10 +281,8 @@
         updateControlUi();
         setLog(controllerState?.is_current_viewer ? "You now control this session." : "Control released.");
         if (!wasController && controllerState?.is_current_viewer) {
-          openComposer();
-        }
-        if (wasController && !controllerState?.is_current_viewer) {
-          closeComposer();
+          composerCard.scrollIntoView({ behavior: "smooth", block: "start" });
+          promptField.focus();
         }
         refreshSessionState();
       }
@@ -331,21 +325,8 @@
         }
         await sendCommand("prompt_to_codex", { text, submit });
         if (submit) {
-          closeComposer();
           viewerStage.scrollIntoView({ behavior: "smooth", block: "start" });
         }
-      }
-
-      function openComposer() {
-        composerCard.classList.remove("hidden");
-        composerCard.scrollIntoView({ behavior: "smooth", block: "start" });
-        promptField.focus();
-        openComposerButton.textContent = "Composer Open";
-      }
-
-      function closeComposer() {
-        composerCard.classList.add("hidden");
-        openComposerButton.textContent = "Open Composer";
       }
 
       function toggleMonitor() {
@@ -358,8 +339,6 @@
       sendButton.addEventListener("click", () => sendPrompt(true));
       focusCodexButton.addEventListener("click", () => sendCommand("focus_codex"));
       stopCodexButton.addEventListener("click", () => sendCommand("interrupt_codex"));
-      openComposerButton.addEventListener("click", openComposer);
-      closeComposerButton.addEventListener("click", closeComposer);
       monitorToggleButton.addEventListener("click", toggleMonitor);
 
       updateControlUi();

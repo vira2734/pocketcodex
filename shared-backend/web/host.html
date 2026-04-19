@@ -49,6 +49,7 @@
       let socket;
       let peer;
       let localStream;
+      let heartbeatTimer;
 
       function setStatus(text) {
         statusNode.textContent = text;
@@ -110,6 +111,14 @@
           const url = new URL("/viewer.html", window.location.origin);
           url.searchParams.set("session", sessionInput.value);
           linkNode.textContent = url.toString();
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = setInterval(() => {
+            fetch(`/api/sessions/${sessionInput.value}/heartbeat`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ role: "host" }),
+            });
+          }, 5000);
         };
 
         socket.onmessage = async (event) => {
@@ -143,6 +152,7 @@
         socket.onclose = () => {
           setStatus("Socket disconnected.");
           shareButton.disabled = true;
+          clearInterval(heartbeatTimer);
         };
       }
 

@@ -16,10 +16,52 @@
           Mac agent that can paste prompts into the Codex app.
         </p>
         <div class="row">
-          <a href="/host.html">Open Mac host page</a>
-          <a href="/viewer.html">Open mobile viewer page</a>
+          <label class="small" for="session">Session</label>
         </div>
+        <input id="session" class="mono" placeholder="Leave blank to generate one" />
+        <div class="row">
+          <button id="create">Create Session</button>
+          <button id="reuse" class="secondary">Use Existing Session</button>
+        </div>
+        <div id="links" class="log status">Create a session to generate host and viewer links.</div>
       </section>
     </main>
+
+    <script>
+      const sessionInput = document.getElementById("session");
+      const createButton = document.getElementById("create");
+      const reuseButton = document.getElementById("reuse");
+      const linksNode = document.getElementById("links");
+
+      async function renderLinks(sessionId) {
+        const hostUrl = new URL("/host.html", window.location.origin);
+        hostUrl.searchParams.set("session", sessionId);
+
+        const viewerUrl = new URL("/viewer.html", window.location.origin);
+        viewerUrl.searchParams.set("session", sessionId);
+
+        linksNode.textContent =
+          `Session: ${sessionId}\n` +
+          `Host URL: ${hostUrl.toString()}\n` +
+          `Viewer URL: ${viewerUrl.toString()}\n\n` +
+          `Start the Mac agent with:\npython3 mac_agent.py --session ${sessionId}`;
+      }
+
+      async function createSession(useExisting) {
+        const sessionId = sessionInput.value.trim();
+        const payload = useExisting && sessionId ? { session_id: sessionId } : {};
+        const response = await fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        sessionInput.value = data.session_id;
+        renderLinks(data.session_id);
+      }
+
+      createButton.addEventListener("click", () => createSession(false));
+      reuseButton.addEventListener("click", () => createSession(true));
+    </script>
   </body>
 </html>

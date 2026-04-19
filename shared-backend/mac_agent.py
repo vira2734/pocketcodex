@@ -76,6 +76,7 @@ def process_command(command: dict, dry_run: bool, app_name: str) -> tuple[bool, 
 def run_loop(base_url: str, session_id: str, poll_seconds: float, dry_run: bool, app_name: str) -> None:
     agent_name = socket.gethostname()
     claim_url = f"{base_url}/api/sessions/{session_id}/commands/claim-next"
+    heartbeat_url = f"{base_url}/api/sessions/{session_id}/heartbeat"
 
     print(f"Mac agent watching session {session_id}")
     print(f"Target app: {app_name}")
@@ -84,6 +85,7 @@ def run_loop(base_url: str, session_id: str, poll_seconds: float, dry_run: bool,
 
     while True:
         try:
+            request_json("POST", heartbeat_url, {"role": "agent"})
             command = request_json("POST", claim_url, {"agent_name": agent_name})
             if command:
                 ok, detail = process_command(command, dry_run=dry_run, app_name=app_name)

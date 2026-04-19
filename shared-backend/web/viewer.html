@@ -22,6 +22,7 @@
           </div>
         </div>
         <p id="status" class="status">Idle</p>
+        <p id="presence" class="status">No session data yet.</p>
         <div class="video-frame">
           <video id="remote" autoplay playsinline controls></video>
         </div>
@@ -39,6 +40,7 @@
           <button id="sendNoSubmit" class="secondary">Paste Only</button>
         </div>
         <div id="log" class="log status">No commands sent yet.</div>
+        <div id="history" class="log status" style="margin-top: 12px">No command history yet.</div>
       </section>
     </main>
 
@@ -49,7 +51,9 @@
       const pasteOnlyButton = document.getElementById("sendNoSubmit");
       const remoteVideo = document.getElementById("remote");
       const statusNode = document.getElementById("status");
+      const presenceNode = document.getElementById("presence");
       const logNode = document.getElementById("log");
+      const historyNode = document.getElementById("history");
       const promptField = document.getElementById("prompt");
 
       const params = new URLSearchParams(window.location.search);
@@ -57,6 +61,8 @@
 
       let socket;
       let peer;
+      let heartbeatTimer;
+      let pollTimer;
 
       function setStatus(text) {
         statusNode.textContent = text;
@@ -64,6 +70,36 @@
 
       function setLog(text) {
         logNode.textContent = text;
+      }
+
+      function describeSeen(value) {
+        return value ? value : "offline";
+      }
+
+      async function refreshSessionState() {
+        const response = await fetch(`/api/sessions/${sessionInput.value}`);
+        if (!response.ok) {
+          presenceNode.textContent = "Session not found yet.";
+          return;
+        }
+
+        const data = await response.json();
+        const session = data.session;
+        presenceNode.textContent =
+          `Host: ${describeSeen(session.last_host_seen)} | ` +
+          `Viewer: ${describeSeen(session.last_viewer_seen)} | ` +
+          `Agent: ${describeSeen(session.last_agent_seen)}`;
+
+        if (data.recent_commands.length === 0) {
+          historyNode.textContent = "No command history yet.";
+          return;
+        }
+
+        const lines = data.recent_commands.slice(0, 5).map((command) => {
+          const suffix = command.result?.detail ? ` -> ${command.result.detail}` : "";
+          return `#${command.id} ${command.status}${suffix}`;
+        });
+        historyNode.textContent = lines.join("\n");
       }
 
       function wsBase() {
@@ -98,6 +134,17 @@
         socket.onopen = () => {
           setStatus("Viewer connected. Waiting for host stream.");
           socket.send(JSON.stringify({ type: "viewer-ready" }));
+          clearInterval(heartbeatTimer);
+          clearInterval(pollTimer);
+          heartbeatTimer = setInterval(() => {
+            fetch(`/api/sessions/${sessionInput.value}/heartbeat`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ role: "viewer" }),
+            });
+          }, 5000);
+          pollTimer = setInterval(refreshSessionState, 2000);
+          refreshSessionState();
         };
 
         socket.onmessage = async (event) => {
@@ -118,6 +165,8 @@
 
         socket.onclose = () => {
           setStatus("Socket disconnected.");
+          clearInterval(heartbeatTimer);
+          clearInterval(pollTimer);
         };
       }
 
@@ -140,6 +189,7 @@
 
         const data = await response.json();
         setLog(`Queued command #${data.id}\nStatus: ${data.status}\nSubmit: ${data.payload.submit}`);
+        refreshSessionState();
       }
 
       connectButton.addEventListener("click", connectSocket);

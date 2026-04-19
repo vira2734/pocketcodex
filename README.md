@@ -15,8 +15,10 @@ Implemented and smoke-tested locally:
 
 - FastAPI service with session management
 - WebSocket signaling for WebRTC offer/answer exchange
+- launch page that creates or reuses a session id
 - browser host page for Mac screen sharing
 - mobile viewer page for watching the stream and sending prompts
+- presence and recent-command status in the phone UI
 - Mac agent that polls for commands and can inject prompts into the Codex app using AppleScript
 - API smoke test for session and command queue flows
 
@@ -35,6 +37,7 @@ The prototype is split into three pieces:
 1. FastAPI control plane
    - serves the web UI
    - stores session metadata and pending commands
+   - tracks host, viewer, and agent heartbeats
    - relays WebRTC signaling messages over WebSocket
 
 2. Mac host
@@ -86,17 +89,20 @@ python3 mac_agent.py --session demo123 --dry-run
 
 ### 3. Open the host page on the Mac
 
-Visit:
+Open:
 
-- `http://127.0.0.1:8000/host.html?session=demo123`
+- `http://127.0.0.1:8000/`
 
-Choose the Codex window or the full screen when the browser asks what to share.
+Create a session there, then use the generated host and viewer links.
 
-### 4. Open the viewer page on the phone
+### 4. Open the host page on the Mac
 
-Visit:
+Use the generated host link and choose the Codex window or the full screen when the browser asks
+what to share.
 
-- `http://YOUR-MAC-IP:8000/viewer.html?session=demo123`
+### 5. Open the viewer page on the phone
+
+Use the generated viewer link from the launch page.
 
 If you are testing outside your local network, put the server behind a secure tunnel or relay.
 
@@ -114,6 +120,7 @@ This validates:
 
 - health endpoint
 - session creation
+- heartbeat updates
 - command enqueue
 - command claim
 - command completion
@@ -131,6 +138,7 @@ The Mac agent needs macOS Accessibility permission to send keystrokes to the Cod
 - The stream is browser-based, so it does not yet require a packaged macOS app.
 - The Mac agent targets an app named `Codex` by default.
 - Prompt injection works best when the Codex prompt field is ready for paste input.
+- The viewer page now shows recent command results and whether the host and agent appear online.
 
 ## Near-Term Roadmap
 

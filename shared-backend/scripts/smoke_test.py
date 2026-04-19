@@ -59,6 +59,13 @@ def main() -> None:
         session_state = fetch_json("http://127.0.0.1:8011/api/sessions/smoke123")
         assert session_state["session"]["id"] == "smoke123"
 
+        heartbeat = fetch_json(
+            "http://127.0.0.1:8011/api/sessions/smoke123/heartbeat",
+            method="POST",
+            payload={"role": "viewer"},
+        )
+        assert heartbeat["status"] == "ok"
+
         command = fetch_json(
             "http://127.0.0.1:8011/api/sessions/smoke123/commands",
             method="POST",
@@ -86,10 +93,13 @@ def main() -> None:
         assert completed["status"] == "completed"
         assert completed["result"]["detail"] == "Smoke test complete"
 
+        refreshed = fetch_json("http://127.0.0.1:8011/api/sessions/smoke123")
+        assert refreshed["session"]["last_viewer_seen"] is not None
+
         index_html = fetch_text("http://127.0.0.1:8011/")
         host_html = fetch_text("http://127.0.0.1:8011/host.html")
         viewer_html = fetch_text("http://127.0.0.1:8011/viewer.html")
-        assert "PocketCodex" in index_html
+        assert "Create Session" in index_html
         assert "Start Sharing" in host_html
         assert "Send Prompt" in viewer_html
 

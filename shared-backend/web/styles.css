@@ -164,6 +164,11 @@ video {
   justify-content: center;
 }
 
+.hero-button.is-connected {
+  background: linear-gradient(135deg, #1fc98a, #7be9bf);
+  color: #062318;
+}
+
 .viewer-stage {
   margin-top: 0;
 }

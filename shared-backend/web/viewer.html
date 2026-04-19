@@ -12,7 +12,7 @@
         <input id="session" class="mono hidden" />
 
         <div class="viewer-hero">
-          <button id="connect" class="hero-button">Connect to My Mac</button>
+          <button id="connect" class="hero-button">Connect to Computer</button>
         </div>
 
         <div class="viewer-stage">
@@ -40,7 +40,7 @@
         <div class="stack" style="margin-top: 16px">
           <input
             id="prompt"
-            placeholder="Talk to Your Mac"
+            placeholder="Talk to Your Computer"
           />
           <div class="composer-actions">
             <button id="send" class="execute-button">Execute</button>
@@ -112,6 +112,7 @@
       let pollTimer;
       let runtimeConfig;
       let controllerState;
+      let isConnecting = false;
 
       function storageKey() {
         return `pocketcodex-viewer:${sessionInput.value}:${sessionToken}`;
@@ -174,6 +175,17 @@
 
       function setStatus(text) {
         statusNode.textContent = text;
+      }
+
+      function updateConnectButton() {
+        const connected = socket?.readyState === WebSocket.OPEN;
+        connectButton.textContent = connected
+          ? "Computer Connected"
+          : isConnecting
+            ? "Connecting to Computer..."
+            : "Connect to Computer";
+        connectButton.classList.toggle("is-connected", connected);
+        connectButton.disabled = isConnecting || connected;
       }
 
       function setLog(text) {
@@ -277,6 +289,12 @@
       }
 
       async function connectSocket() {
+        if (socket?.readyState === WebSocket.OPEN || isConnecting) {
+          return;
+        }
+
+        isConnecting = true;
+        updateConnectButton();
         const config = await ensureRuntimeConfig();
         await ensureSession();
         peer = new RTCPeerConnection({
@@ -295,6 +313,8 @@
 
         socket = new WebSocket(`${wsBase(window.location.origin)}/ws/session/${sessionInput.value}/viewer?token=${encodeURIComponent(sessionToken)}`);
         socket.onopen = () => {
+          isConnecting = false;
+          updateConnectButton();
           setStatus("Viewer connected. Waiting for host stream.");
           socket.send(JSON.stringify({ type: "viewer-ready" }));
           clearInterval(heartbeatTimer);
@@ -331,7 +351,14 @@
           }
         };
 
+        socket.onerror = () => {
+          isConnecting = false;
+          updateConnectButton();
+        };
+
         socket.onclose = () => {
+          isConnecting = false;
+          updateConnectButton();
           setStatus("Socket disconnected.");
           clearInterval(heartbeatTimer);
           clearInterval(pollTimer);
@@ -426,6 +453,7 @@
       });
 
       updateControlUi();
+      updateConnectButton();
       renderPromptHistory();
     </script>
   </body>

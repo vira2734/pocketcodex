@@ -239,10 +239,11 @@ def main() -> None:
         assert "Adaptive Viewer QR" in index_html
         assert "Start Remote Trial" in index_html
         assert "localhost or HTTPS" in host_html
-        assert "Share Window" in host_html
-        assert "Share Entire Screen" in host_html
-        assert "Take Control" in viewer_html
-        assert "Composer" in viewer_html
+        assert "Stream your Mac controls to your phone." in host_html
+        assert "Phone Status" in host_html
+        assert "Connect to Computer" in viewer_html
+        assert "Talk to Your Computer" in viewer_html
+        assert "Chat History" in viewer_html
 
         print("smoke test passed")
     finally:

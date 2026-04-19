@@ -21,34 +21,28 @@
                       />
                     </svg>
                   </span>
-                  <span id="connectLabel">Connect Host</span>
+                  <span id="connectLabel">Stream Your Mac Controls to Your Phone</span>
                 </span>
               </button>
             </div>
 
             <div class="host-copy">
               <span class="pill">Host Computer</span>
-              <h1 class="host-title">Share Codex or your full screen to your phone.</h1>
+              <h1 class="host-title">Stream your Mac controls to your phone.</h1>
               <p class="status host-subtitle">
-                Use this page on the computer. Safari will ask whether you want to share the Codex
-                app window or the full screen.
+                Use this page on the computer. The host flow now shares the entire screen only and
+                gives your phone a single link and QR code to connect.
               </p>
-            </div>
-
-            <div class="stack">
-              <label class="small" for="session">Session</label>
-              <input id="session" class="mono" />
-            </div>
-
-            <div class="host-actions">
-              <button id="shareWindow" class="secondary host-action-button" disabled>Share Window</button>
-              <button id="shareScreen" class="secondary host-action-button" disabled>Share Entire Screen</button>
             </div>
 
             <div id="warning" class="status-card host-warning hidden"></div>
             <div class="status-card">
               <strong>Host Status</strong>
               <div id="status" class="status">Idle</div>
+            </div>
+            <div class="status-card">
+              <strong>Phone Status</strong>
+              <div id="phoneStatus" class="status">Waiting for phone connection.</div>
             </div>
             <div class="status-card">
               <strong>Phone Link</strong>
@@ -69,11 +63,10 @@
     <script>
       const sessionInput = document.getElementById("session");
       const connectButton = document.getElementById("connect");
-      const shareWindowButton = document.getElementById("shareWindow");
-      const shareScreenButton = document.getElementById("shareScreen");
       const preview = document.getElementById("preview");
       const warningNode = document.getElementById("warning");
       const statusNode = document.getElementById("status");
+      const phoneStatusNode = document.getElementById("phoneStatus");
       const linkNode = document.getElementById("link");
       const viewerQr = document.getElementById("viewerQr");
       const connectLabelNode = document.getElementById("connectLabel");
@@ -93,13 +86,17 @@
         statusNode.textContent = text;
       }
 
+      function setPhoneStatus(text) {
+        phoneStatusNode.textContent = text;
+      }
+
       function updateConnectButton() {
         const connected = socket?.readyState === WebSocket.OPEN;
         connectLabelNode.textContent = connected
-          ? "Host Connected"
+          ? "Host Ready"
           : isConnecting
-            ? "Connecting Host..."
-            : "Connect Host";
+            ? "Preparing Stream..."
+            : "Stream Your Mac Controls to Your Phone";
         connectButton.classList.toggle("is-connected", connected);
         connectButton.disabled = isConnecting || connected;
       }
@@ -170,7 +167,7 @@
         throw new Error("Missing session token in host link.");
       }
 
-      async function startSharing(mode) {
+      async function startSharing() {
         const config = await ensureRuntimeConfig();
         if (!isSecureCaptureOrigin()) {
           renderOriginWarning(config);
@@ -178,25 +175,17 @@
           return;
         }
 
-        const videoOptions = { frameRate: 24 };
-        let expectedSelection = "window or full screen";
-
-        if (mode === "window") {
-          videoOptions.displaySurface = "window";
-          videoOptions.preferCurrentTab = false;
-          expectedSelection = "Codex window";
-        } else if (mode === "screen") {
-          videoOptions.displaySurface = "monitor";
-          expectedSelection = "entire screen";
-        }
-
         localStream = await navigator.mediaDevices.getDisplayMedia({
-          video: videoOptions,
+          video: {
+            frameRate: 24,
+            displaySurface: "monitor",
+          },
           audio: false,
         });
         preview.srcObject = localStream;
         await createPeerConnection();
-        setStatus(`Sharing started. If Safari asked, choose ${expectedSelection}. Waiting for phone viewer.`);
+        setStatus("Sharing started. If Safari asked, choose your entire screen.");
+        setPhoneStatus("Waiting for phone connection.");
       }
 
       async function connectSocket() {
@@ -213,15 +202,17 @@
         socket.onopen = () => {
           isConnecting = false;
           updateConnectButton();
-          setStatus("Host connected. Choose window share or full-screen share.");
-          shareWindowButton.disabled = false;
-          shareScreenButton.disabled = false;
+          setStatus("Host connected. Starting full-screen sharing.");
+          setPhoneStatus("Waiting for phone connection.");
           const url = new URL("/viewer.html", config.public_base_url);
           url.searchParams.set("session", sessionInput.value);
           url.searchParams.set("token", sessionToken);
           linkNode.textContent = url.toString();
           viewerQr.src = `/api/sessions/${sessionInput.value}/qr.svg?kind=viewer&token=${encodeURIComponent(sessionToken)}`;
           viewerQr.classList.remove("hidden");
+          startSharing().catch((error) => {
+            setStatus(`Unable to start sharing: ${error?.message || error}`);
+          });
           clearInterval(heartbeatTimer);
           heartbeatTimer = setInterval(() => {
             fetch(`/api/sessions/${sessionInput.value}/heartbeat`, {
@@ -240,7 +231,7 @@
 
           if (message.type === "viewer-ready") {
             if (!localStream) {
-              setStatus("Viewer is ready. Start sharing first.");
+              setPhoneStatus("Phone connected, waiting for stream.");
               return;
             }
 
@@ -249,12 +240,14 @@
             await peer.setLocalDescription(offer);
             socket.send(JSON.stringify({ type: "offer", sdp: offer }));
             setStatus("Offer sent to viewer.");
+            setPhoneStatus("Phone connected. Establishing stream.");
             return;
           }
 
           if (message.type === "answer" && peer) {
             await peer.setRemoteDescription(new RTCSessionDescription(message.sdp));
             setStatus("Viewer connected.");
+            setPhoneStatus("Phone connected.");
             return;
           }
 
@@ -272,16 +265,14 @@
           isConnecting = false;
           updateConnectButton();
           setStatus("Socket disconnected.");
-          shareWindowButton.disabled = true;
-          shareScreenButton.disabled = true;
+          setPhoneStatus("Phone disconnected.");
           clearInterval(heartbeatTimer);
         };
       }
 
       connectButton.addEventListener("click", connectSocket);
-      shareWindowButton.addEventListener("click", () => startSharing("window"));
-      shareScreenButton.addEventListener("click", () => startSharing("screen"));
       updateConnectButton();
+      setPhoneStatus("Waiting for phone connection.");
     </script>
   </body>
 </html>

@@ -50,9 +50,9 @@ The prototype is split into three pieces:
 
 2. Mac host
    - opens the host page on `localhost` in a browser
-   - captures the selected screen or app window with `getDisplayMedia`
-   - exposes separate actions for window sharing and full-screen sharing
-   - displays a QR code for the token-protected phone viewer link
+   - captures the full screen with `getDisplayMedia`
+   - displays one QR code and one token-protected phone viewer link
+   - shows host and phone connection state in a simplified host UI
    - keeps using `localhost` for the host page even when a remote trial tunnel is active
    - streams the media to the phone browser using WebRTC
 
@@ -145,15 +145,17 @@ The launch page now also shows:
 
 ### 4. Open the host page on the Mac
 
-Use the generated localhost host link on the Mac and choose the Codex window or the full screen
-when the browser asks what to share.
+Use the generated localhost host link on the Mac and start the streamlined host flow.
 
-The host page now offers:
+The current host UI intentionally exposes only one path:
 
-- `Share Window` when you want just the Codex app window
-- `Share Entire Screen` when you want the whole desktop
+- `Stream your Mac controls to your phone`
+- one phone viewer link
+- one QR code
+- one phone connection status indicator
 
-Safari still controls the final picker, but the UI now makes the intended choice explicit.
+Under the hood, the host flow now requests entire-screen sharing only. Safari still controls the
+final picker, so you will be asked to choose the full screen when sharing begins.
 
 ### 5. Open the viewer page on the phone
 
@@ -228,7 +230,7 @@ stream testing.
 - The stream is browser-based, so it does not yet require a packaged macOS app.
 - The Mac agent targets an app named `Codex` by default.
 - Safari screen sharing works when the host page is opened on `localhost` or HTTPS. The app now generates a localhost host link for the Mac by default and warns if the host page is opened from a plain LAN HTTP origin.
-- The host page now has separate buttons for window sharing and full-screen sharing to reduce ambiguity in Safari's picker flow.
+- The host page is now intentionally simplified to one visible streaming path. Local-network support still exists in the codebase and launch flow, but the host UI only exposes a single phone link/QR and entire-screen sharing.
 - Prompt injection now replaces the existing Codex draft by default, which avoids accidental prompt concatenation during phone control.
 - The viewer page now shows recent command results, controller status, and whether the host and agent appear online.
 - Set `PUBLIC_BASE_URL` to a public HTTPS URL if you want QR codes that open correctly off-network.

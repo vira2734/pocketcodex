@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PocketCodex Viewer</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="card">
+        <div class="row">
+          <span class="pill">Phone viewer</span>
+        </div>
+        <div class="row">
+          <div style="flex: 1 1 180px">
+            <label class="small" for="session">Session</label>
+            <input id="session" class="mono" />
+          </div>
+          <div>
+            <button id="connect">Connect</button>
+          </div>
+        </div>
+        <p id="status" class="status">Idle</p>
+        <div class="video-frame">
+          <video id="remote" autoplay playsinline controls></video>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Send Prompt</h2>
+        <p class="status">
+          This sends a prompt command to the Mac agent. The agent activates the Codex app and pastes
+          the prompt locally.
+        </p>
+        <textarea id="prompt" placeholder="Ask Codex to review the latest output, explain a bug, or draft a fix."></textarea>
+        <div class="row">
+          <button id="send">Send Prompt</button>
+          <button id="sendNoSubmit" class="secondary">Paste Only</button>
+        </div>
+        <div id="log" class="log status">No commands sent yet.</div>
+      </section>
+    </main>
+
+    <script>
+      const sessionInput = document.getElementById("session");
+      const connectButton = document.getElementById("connect");
+      const sendButton = document.getElementById("send");
+      const pasteOnlyButton = document.getElementById("sendNoSubmit");
+      const remoteVideo = document.getElementById("remote");
+      const statusNode = document.getElementById("status");
+      const logNode = document.getElementById("log");
+      const promptField = document.getElementById("prompt");
+
+      const params = new URLSearchParams(window.location.search);
+      sessionInput.value = params.get("session") || "demo123";
+
+      let socket;
+      let peer;
+
+      function setStatus(text) {
+        statusNode.textContent = text;
+      }
+
+      function setLog(text) {
+        logNode.textContent = text;
+      }
+
+      function wsBase() {
+        return window.location.origin.replace(/^http/, "ws");
+      }
+
+      async function ensureSession() {
+        await fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionInput.value }),
+        });
+      }
+
+      async function connectSocket() {
+        await ensureSession();
+        peer = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        });
+
+        peer.ontrack = (event) => {
+          remoteVideo.srcObject = event.streams[0];
+        };
+
+        peer.onicecandidate = (event) => {
+          if (event.candidate && socket?.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "candidate", candidate: event.candidate }));
+          }
+        };
+
+        socket = new WebSocket(`${wsBase()}/ws/session/${sessionInput.value}/viewer`);
+        socket.onopen = () => {
+          setStatus("Viewer connected. Waiting for host stream.");
+          socket.send(JSON.stringify({ type: "viewer-ready" }));
+        };
+
+        socket.onmessage = async (event) => {
+          const message = JSON.parse(event.data);
+          if (message.type === "offer") {
+            await peer.setRemoteDescription(new RTCSessionDescription(message.sdp));
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
+            socket.send(JSON.stringify({ type: "answer", sdp: answer }));
+            setStatus("Receiving stream.");
+            return;
+          }
+
+          if (message.type === "candidate" && message.candidate) {
+            await peer.addIceCandidate(new RTCIceCandidate(message.candidate));
+          }
+        };
+
+        socket.onclose = () => {
+          setStatus("Socket disconnected.");
+        };
+      }
+
+      async function sendPrompt(submit) {
+        const text = promptField.value.trim();
+        if (!text) {
+          setLog("Enter a prompt first.");
+          return;
+        }
+
+        const response = await fetch(`/api/sessions/${sessionInput.value}/commands`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "prompt_to_codex",
+            text,
+            submit,
+          }),
+        });
+
+        const data = await response.json();
+        setLog(`Queued command #${data.id}\nStatus: ${data.status}\nSubmit: ${data.payload.submit}`);
+      }
+
+      connectButton.addEventListener("click", connectSocket);
+      sendButton.addEventListener("click", () => sendPrompt(true));
+      pasteOnlyButton.addEventListener("click", () => sendPrompt(false));
+    </script>
+  </body>
+</html>
